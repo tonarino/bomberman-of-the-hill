@@ -10,7 +10,8 @@ edition = "2018"
 [workspace]
 members = [
    "./crates/hero_runner",
-   "./crates/hero_plugin",
    "./crates/hero_lib",
    "./crates/hero_macro",
+   "./crates/hero_plugins/wanderer",
+   "./crates/hero_plugins/fool",
 ]
