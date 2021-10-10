@@ -1,3 +1,5 @@
+use std::{thread, time::Duration};
+
 use hero_lib::{Action, world::{Direction, Tile, World}};
 use wasmtime::{Caller, Engine, Func, Instance, Module, Store};
 
@@ -27,12 +29,19 @@ fn main() {
         }
     );
 
-    let module = Module::new(&engine, WANDERER_WASM).unwrap();
-    let imports = &[host_world_inspect.into()][0..module.imports().len().min(1)];
-    let instance = Instance::new(&mut store, &module, imports).unwrap();
-    let act = instance.get_typed_func::<(), u32, _>(&mut store, "__act").unwrap();
-    println!("The hero's decision is: {:?}", Action::from(act.call(&mut store, ()).unwrap()));
-    println!("The hero's decision is: {:?}", Action::from(act.call(&mut store, ()).unwrap()));
-    println!("The hero's decision is: {:?}", Action::from(act.call(&mut store, ()).unwrap()));
+    let wanderer = Module::new(&engine, WANDERER_WASM).unwrap();
+    let fool = Module::new(&engine, FOOL_WASM).unwrap();
+    let wanderer_imports = &[host_world_inspect.into()][0..wanderer.imports().len().min(1)];
+    let wanderer_instance = Instance::new(&mut store, &wanderer, wanderer_imports).unwrap();
+    let fool_imports = &[host_world_inspect.into()][0..fool.imports().len().min(1)];
+    let fool_instance = Instance::new(&mut store, &fool, fool_imports).unwrap();
+    let wanderer_act = wanderer_instance.get_typed_func::<(), u32, _>(&mut store, "__act").unwrap();
+    let fool_act = fool_instance.get_typed_func::<(), u32, _>(&mut store, "__act").unwrap();
+
+    loop {
+        println!("The wanderer's decision is: {:?}", Action::from(wanderer_act.call(&mut store, ()).unwrap()));
+        println!("The fool's decision is: {:?}", Action::from(fool_act.call(&mut store, ()).unwrap()));
+        thread::sleep(Duration::from_secs(1));
+    }
 }
 

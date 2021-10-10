@@ -28,7 +28,7 @@ pub fn wasm_hero(_: TokenStream, input: TokenStream) -> TokenStream {
             __HERO.lock().unwrap().act(&__WorldShim).into()
         }
 
-        extern { pub fn __inspect(direction_raw: u32) -> u32; }
+        extern { fn __inspect(direction_raw: u32) -> u32; }
     };
 
     proc_macro::TokenStream::from(expanded)
