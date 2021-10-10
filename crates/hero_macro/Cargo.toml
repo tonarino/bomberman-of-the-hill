@@ -1,16 +1,13 @@
 [package]
-name = "hero"
+name = "hero_macro"
 version = "0.1.0"
 edition = "2018"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+syn = { version = "1.0.63", features = ["full", "fold"] }
+quote = "1.0.9"
 
-[workspace]
-members = [
-   "./crates/hero_runner",
-   "./crates/hero_plugin",
-   "./crates/hero_lib",
-   "./crates/hero_macro",
-]
+[lib]
+proc-macro = true

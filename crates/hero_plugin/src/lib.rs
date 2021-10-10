@@ -2,36 +2,29 @@ use std::sync::Mutex;
 
 use hero_lib::{self, Action, Hero, world::{Direction, Tile, World}};
 use strum::IntoEnumIterator;
-use lazy_static::lazy_static;
+use hero_macro::wasm_hero;
 
-struct Wanderer;
+/// To build a `wasm hero`, all that's needed is to implement the
+/// `Hero` trait, which defines how the hero interacts with the
+/// world, and to mark the struct with the `wasm_hero` attribute,
+/// which exposes the `wasm` exports the game expects to hot-swap
+/// the hero in.
+#[wasm_hero]
+struct Wanderer {
+    preferred_direction: Direction,
+}
 
 impl Hero for Wanderer {
-    fn spawn() -> Self { Self }
-
+    fn spawn() -> Self { Self { preferred_direction: Direction::North } }
     fn act(&self, world: &impl World) -> Action {
-        // A wanderer walks into the first free tile they see.
+        // A wanderer walks to his preferred direction if it's free.
+        // If it isn't, they  walk to the first free tile they inspect.
+
         let tile_is_free = |d: &Direction| world.inspect(*d) == Tile::EmptyFloor;
-        Direction::iter().filter(tile_is_free).next().map(Action::Move).unwrap_or(Action::StayStill)
+        if tile_is_free(&self.preferred_direction) {
+            Action::Move(self.preferred_direction)
+        } else {
+            Direction::iter().filter(tile_is_free).next().map(Action::Move).unwrap_or(Action::StayStill)
+        }
     }
 }
-
-// Abstract these away into a macro
-lazy_static! {
-    static ref HERO: Mutex<Wanderer> = Mutex::new(Wanderer::spawn());
-}
-
-struct _WorldShim;
-
-impl World for _WorldShim {
-    fn inspect(&self, direction: Direction) -> Tile {
-        unsafe { __inspect(direction as u32).into() }
-    }
-}
-
-#[no_mangle]
-pub fn __act() -> u32 {
-    HERO.lock().unwrap().act(&_WorldShim).into()
-}
-
-extern { fn __inspect(direction_raw: u32) -> u32; }

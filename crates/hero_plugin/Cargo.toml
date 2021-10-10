@@ -12,5 +12,8 @@ lazy_static = "1"
 [dependencies.hero_lib]
 path = "../hero_lib"
 
+[dependencies.hero_macro]
+path = "../hero_macro"
+
 [lib]
 crate-type = ["cdylib"]
