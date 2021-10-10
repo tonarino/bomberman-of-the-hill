@@ -1,7 +1,8 @@
 use hero_lib::{Action, world::{Direction, Tile, World}};
 use wasmtime::{Caller, Engine, Func, Instance, Module, Store};
 
-static WASM: &[u8] = include_bytes!("../../../target/wasm32-unknown-unknown/debug/hero_plugin.wasm");
+static WANDERER_WASM: &[u8] = include_bytes!("../../../target/wasm32-unknown-unknown/debug/wanderer.wasm");
+static FOOL_WASM: &[u8] = include_bytes!("../../../target/wasm32-unknown-unknown/debug/fool.wasm");
 
 struct SolidWorld {
     tile: Tile // All tiles are the same in a solid world!
@@ -26,10 +27,12 @@ fn main() {
         }
     );
 
-    let module = Module::new(&engine, WASM).unwrap();
-    let instance = Instance::new(&mut store, &module, &[host_world_inspect.into()]).unwrap();
+    let module = Module::new(&engine, WANDERER_WASM).unwrap();
+    let imports = &[host_world_inspect.into()][0..module.imports().len().min(1)];
+    let instance = Instance::new(&mut store, &module, imports).unwrap();
     let act = instance.get_typed_func::<(), u32, _>(&mut store, "__act").unwrap();
-    let action: Action = act.call(&mut store, ()).unwrap().into();
-    println!("The hero's decision is: {:?}", action);
+    println!("The hero's decision is: {:?}", Action::from(act.call(&mut store, ()).unwrap()));
+    println!("The hero's decision is: {:?}", Action::from(act.call(&mut store, ()).unwrap()));
+    println!("The hero's decision is: {:?}", Action::from(act.call(&mut store, ()).unwrap()));
 }
 

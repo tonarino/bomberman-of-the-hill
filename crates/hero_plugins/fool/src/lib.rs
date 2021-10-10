@@ -1,7 +1,6 @@
 use std::sync::Mutex;
 
 use hero_lib::{self, Action, Hero, world::{Direction, Tile, World}};
-use rand::prelude::SliceRandom;
 use hero_macro::wasm_hero;
 
 /// To build a `wasm hero`, all that's needed is to implement the
@@ -10,14 +9,18 @@ use hero_macro::wasm_hero;
 /// which exposes the `wasm` exports the game expects to hot-swap
 /// the hero in.
 #[wasm_hero]
-struct Fool;
+struct Fool {
+    choice: usize
+}
 
 impl Hero for Fool {
-    fn spawn() -> Self { Self }
-    fn act(&self, _: &impl World) -> Action {
+    fn spawn() -> Self { Self { choice: 0 } }
+    fn act(&mut self, _: &impl World) -> Action {
         // A fool just ignores the world and travels north! Or somewhere
         // close to north! What's the worst that could happen?
         let possible_moves = [Direction::North, Direction::NorthWest, Direction::NorthEast];
-        Action::Move(*possible_moves.choose(&mut rand::thread_rng()).unwrap())
+        let chosen_move = possible_moves[self.choice];
+        self.choice = (self.choice + 1) % possible_moves.len();
+        Action::Move(chosen_move)
     }
 }
