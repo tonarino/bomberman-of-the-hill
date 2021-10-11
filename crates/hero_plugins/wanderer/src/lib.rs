@@ -16,7 +16,7 @@ struct Wanderer {
 
 impl Hero for Wanderer {
     fn spawn() -> Self { Self { preferred_direction: Direction::North } }
-    fn act(&self, world: &impl World) -> Action {
+    fn act(&mut self, world: &impl World) -> Action {
         // A wanderer walks to his preferred direction if it's free.
         // If it isn't, they  walk to the first free tile they inspect.
         let tile_is_free = |d: &Direction| world.inspect(*d) == Tile::EmptyFloor;
