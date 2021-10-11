@@ -1,8 +1,12 @@
 use std::sync::Mutex;
 
-use hero_lib::{self, Action, Hero, world::{Direction, Tile, World}};
-use strum::IntoEnumIterator;
+use hero_lib::{
+    self,
+    world::{Direction, Tile, World},
+    Action, Hero,
+};
 use hero_macro::wasm_hero;
+use strum::IntoEnumIterator;
 
 /// To build a `wasm hero`, all that's needed is to implement the
 /// `Hero` trait, which defines how the hero interacts with the
@@ -15,7 +19,11 @@ struct Wanderer {
 }
 
 impl Hero for Wanderer {
-    fn spawn() -> Self { Self { preferred_direction: Direction::North } }
+    fn spawn() -> Self {
+        Self {
+            preferred_direction: Direction::North,
+        }
+    }
     fn act(&mut self, world: &impl World) -> Action {
         // A wanderer walks to his preferred direction if it's free.
         // If it isn't, they  walk to the first free tile they inspect.
@@ -23,7 +31,11 @@ impl Hero for Wanderer {
         if tile_is_free(&self.preferred_direction) {
             Action::Move(self.preferred_direction)
         } else {
-            Direction::iter().filter(tile_is_free).next().map(Action::Move).unwrap_or(Action::StayStill)
+            Direction::iter()
+                .filter(tile_is_free)
+                .next()
+                .map(Action::Move)
+                .unwrap_or(Action::StayStill)
         }
     }
 }

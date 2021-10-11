@@ -11,7 +11,7 @@ impl Location {
         let (width, height) = labyrinth.size();
         let labyrinth_offset = Vec2::new(
             -(TILE_WIDTH_PX / 2.0) * width as f32,
-            -(TILE_WIDTH_PX / 2.0) * height as f32
+            -(TILE_WIDTH_PX / 2.0) * height as f32,
         );
         Vec3::new(
             labyrinth_offset.x + (self.0 as f32) * TILE_WIDTH_PX,
@@ -21,7 +21,11 @@ impl Location {
     }
 }
 
-pub fn draw_labyrinth(commands: &mut Commands, labyrinth: &Labyrinth, materials: &mut Assets<ColorMaterial>) {
+pub fn draw_labyrinth(
+    commands: &mut Commands,
+    labyrinth: &Labyrinth,
+    materials: &mut Assets<ColorMaterial>,
+) {
     let (floor, wall, lava, switch) = (
         materials.add(Color::DARK_GREEN.into()),
         materials.add(Color::BLACK.into()),
@@ -42,7 +46,7 @@ pub fn draw_labyrinth(commands: &mut Commands, labyrinth: &Labyrinth, materials:
 
             let labyrinth_offset = Vec2::new(
                 -(TILE_WIDTH_PX / 2.0) * width as f32,
-                -(TILE_WIDTH_PX / 2.0) * height as f32
+                -(TILE_WIDTH_PX / 2.0) * height as f32,
             );
             let tile_size = Vec2::splat(TILE_WIDTH_PX);
             let tile_position = Vec3::new(
@@ -54,7 +58,7 @@ pub fn draw_labyrinth(commands: &mut Commands, labyrinth: &Labyrinth, materials:
             commands.spawn_bundle(SpriteBundle {
                 material: material.clone(),
                 sprite: Sprite::new(tile_size),
-                transform: Transform::from_translation(tile_position,),
+                transform: Transform::from_translation(tile_position),
                 ..Default::default()
             });
         }

@@ -1,6 +1,6 @@
 use proc_macro::TokenStream;
 use quote::quote;
-use syn::{ItemStruct, parse_macro_input};
+use syn::{parse_macro_input, ItemStruct};
 
 #[proc_macro_attribute]
 pub fn wasm_hero(_: TokenStream, input: TokenStream) -> TokenStream {

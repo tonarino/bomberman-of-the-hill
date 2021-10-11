@@ -1,6 +1,6 @@
 #![feature(bool_to_option)]
-pub mod world;
 pub mod wasm_helpers;
+pub mod world;
 
 use world::{Direction, World};
 

@@ -1,6 +1,10 @@
 use std::sync::Mutex;
 
-use hero_lib::{self, Action, Hero, world::{Direction, Tile, World}};
+use hero_lib::{
+    self,
+    world::{Direction, Tile, World},
+    Action, Hero,
+};
 use hero_macro::wasm_hero;
 
 /// To build a `wasm hero`, all that's needed is to implement the
@@ -10,11 +14,13 @@ use hero_macro::wasm_hero;
 /// the hero in.
 #[wasm_hero]
 struct Fool {
-    choice: usize
+    choice: usize,
 }
 
 impl Hero for Fool {
-    fn spawn() -> Self { Self { choice: 0 } }
+    fn spawn() -> Self {
+        Self { choice: 0 }
+    }
     fn act(&mut self, world: &impl World) -> Action {
         // A fool just ignores the world and travels north! Or somewhere
         // close to north! What's the worst that could happen?

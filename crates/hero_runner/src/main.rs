@@ -1,19 +1,20 @@
-use std::{sync::Arc, thread, time::Duration};
 use bevy::prelude::*;
+use std::sync::Arc;
 
 use hero_behaviour::HeroBehaviourPlugin;
-use hero_lib::{Action, world::{Direction, Tile, World}};
 use labyrinth::Labyrinth;
 use rendering::draw_labyrinth;
-use wasmtime::{Caller, Engine, Func, Instance, Module, Store};
 
-static WANDERER_WASM: &[u8] = include_bytes!("../../../target/wasm32-unknown-unknown/debug/wanderer.wasm");
+#[allow(unused)]
+static WANDERER_WASM: &[u8] =
+    include_bytes!("../../../target/wasm32-unknown-unknown/debug/wanderer.wasm");
+#[allow(unused)]
 static FOOL_WASM: &[u8] = include_bytes!("../../../target/wasm32-unknown-unknown/debug/fool.wasm");
 
+mod hero_behaviour;
+mod hero_hotswap;
 mod labyrinth;
 mod rendering;
-mod hero_hotswap;
-mod hero_behaviour;
 
 fn main() {
     let labyrinth = Labyrinth::from(labyrinth::DANGEROUS);
