@@ -1,5 +1,5 @@
 use bevy::prelude::*;
-use hero_lib::world::Tile::{self, Wall};
+use hero_lib::world::Tile;
 
 use crate::labyrinth::{Labyrinth, Location};
 

@@ -8,6 +8,7 @@ edition = "2018"
 [dependencies]
 wasmtime = "*"
 bevy = "0.5"
+anyhow = "*"
 
 [dependencies.hero_lib]
 path = "../hero_lib"

@@ -1,4 +1,5 @@
 use bevy::prelude::*;
+use hero_hotswap::HeroHotswapPlugin;
 use std::sync::Arc;
 
 use hero_behaviour::HeroBehaviourPlugin;
@@ -24,6 +25,7 @@ fn main() {
             group.disable::<bevy::audio::AudioPlugin>()
         })
         .add_plugin(HeroBehaviourPlugin)
+        .add_plugin(HeroHotswapPlugin)
         .add_startup_system(setup.system())
         .run();
 }
