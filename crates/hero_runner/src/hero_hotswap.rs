@@ -16,8 +16,7 @@ pub struct WasmHeroAsset {
 
 impl Plugin for HeroHotswapPlugin {
     fn build(&self, app: &mut AppBuilder) {
-        app
-            .insert_resource(HeroHandles(vec![]))
+        app.insert_resource(HeroHandles(vec![]))
             .add_asset::<WasmHeroAsset>()
             .init_asset_loader::<WasmHeroLoader>()
             .add_system(hotswap_system.system());
@@ -34,7 +33,9 @@ impl AssetLoader for WasmHeroLoader {
         load_context: &'a mut LoadContext,
     ) -> BoxedFuture<'a, Result<(), anyhow::Error>> {
         Box::pin(async move {
-            let wasm_hero_asset = WasmHeroAsset{ bytes: bytes.into() };
+            let wasm_hero_asset = WasmHeroAsset {
+                bytes: bytes.into(),
+            };
             load_context.set_default_asset(LoadedAsset::new(wasm_hero_asset));
             Ok(())
         })
@@ -45,10 +46,7 @@ impl AssetLoader for WasmHeroLoader {
     }
 }
 
-fn hotswap_system (
-    asset_server: Res<AssetServer>,
-    mut handles: ResMut<HeroHandles>,
-) {
+fn hotswap_system(asset_server: Res<AssetServer>, mut handles: ResMut<HeroHandles>) {
     let untyped_handles = asset_server.load_folder("heroes").unwrap();
     handles.0 = untyped_handles.into_iter().map(|h| h.typed()).collect();
 }

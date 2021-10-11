@@ -70,8 +70,6 @@ impl Labyrinth {
 impl<T: AsRef<str>> From<T> for Labyrinth {
     fn from(text: T) -> Self {
         let lines: Vec<&str> = text.as_ref().lines().rev().collect();
-        println!("{}", lines[0]);
-
         // Very panicky (this should be a TryFrom) but good for a quick test
         assert!(lines.windows(2).all(|w| w[0].len() == w[1].len()));
         assert!(lines.len() > 0 && lines[0].len() > 0);

@@ -1,11 +1,15 @@
 use std::sync::Arc;
 
+use anyhow::anyhow;
 use bevy::prelude::*;
 use hero_lib::Action;
 use wasmtime::{Caller, Func, Store};
-use anyhow::anyhow;
 
-use crate::{hero_hotswap::{HeroHandles, WasmHeroAsset}, labyrinth::{self, Labyrinth, INITIAL_LOCATION}, rendering::{LABYRINTH_Z, TILE_WIDTH_PX}};
+use crate::{
+    hero_hotswap::{HeroHandles, WasmHeroAsset},
+    labyrinth::{self, Labyrinth, INITIAL_LOCATION},
+    rendering::{LABYRINTH_Z, TILE_WIDTH_PX},
+};
 
 pub struct HeroBehaviourPlugin;
 
@@ -61,7 +65,16 @@ fn hero_spawn_system(
     // Spawn all missing heroes (if the wasm file was just loaded)
     for handle in handles.0.iter() {
         if heroes.iter().all(|(_, hero)| hero.handle.id != handle.id) {
-            spawn_hero(handle.clone(), &labyrinth, &engine, &asset_server, &assets, &mut commands, &mut materials).ok();
+            spawn_hero(
+                handle.clone(),
+                &labyrinth,
+                &engine,
+                &asset_server,
+                &assets,
+                &mut commands,
+                &mut materials,
+            )
+            .ok();
         }
     }
 }
@@ -89,12 +102,20 @@ fn spawn_hero(
         },
     );
 
-    let wasm_bytes = assets.get(&handle).ok_or(anyhow!("Wasm asset not found at runtime"))?.bytes.clone();
+    let wasm_bytes = assets
+        .get(&handle)
+        .ok_or(anyhow!("Wasm asset not found at runtime"))?
+        .bytes
+        .clone();
 
     let module = wasmtime::Module::new(&engine, wasm_bytes).unwrap();
     let imports = &[hero_inspect_wasm_import.into()];
     let instance = wasmtime::Instance::new(&mut store, &module, imports).unwrap();
-    let hero = Hero { store, instance, handle};
+    let hero = Hero {
+        store,
+        instance,
+        handle,
+    };
     let texture_handle = asset_server.load("graphics/hero.png");
     commands
         .spawn()
@@ -102,7 +123,9 @@ fn spawn_hero(
         .insert(module)
         .insert_bundle(SpriteBundle {
             material: materials.add(texture_handle.into()),
-            transform: Transform::from_translation(INITIAL_LOCATION.as_pixels(labyrinth, LABYRINTH_Z + 1.0)),
+            transform: Transform::from_translation(
+                INITIAL_LOCATION.as_pixels(labyrinth, LABYRINTH_Z + 1.0),
+            ),
             sprite: Sprite::new(Vec2::splat(TILE_WIDTH_PX)),
             ..Default::default()
         });
