@@ -1,6 +1,8 @@
+use std::ops::Add;
+
 use hero_lib::world::{Direction, Tile, World};
 
-pub const INITIAL_LOCATION: Location = Location(0, 4);
+pub const INITIAL_LOCATION: Location = Location(4, 0);
 
 #[allow(unused)]
 pub const EASY: &str =
@@ -29,6 +31,27 @@ pub struct Labyrinth {
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub struct Location(pub usize, pub usize);
 
+impl Add<Direction> for Location {
+    type Output = Option<Location>;
+
+    fn add(self, rhs: Direction) -> Self::Output {
+        match rhs {
+            Direction::West | Direction::NorthWest | Direction::SouthWest
+                if self.0 == 0 => None,
+            Direction::South | Direction::SouthWest | Direction::SouthEast
+                if self.1 == 0 => None,
+            Direction::West => Some(Location(self.0 - 1, self.1)),
+            Direction::NorthWest => Some(Location(self.0 - 1, self.1 + 1)),
+            Direction::North => Some(Location(self.0, self.1 + 1)),
+            Direction::NorthEast => Some(Location(self.0 + 1, self.1 + 1)),
+            Direction::East => Some(Location(self.0 + 1, self.1)),
+            Direction::SouthEast => Some(Location(self.0 + 1, self.1 - 1)),
+            Direction::South => Some(Location(self.0, self.1 - 1)),
+            Direction::SouthWest => Some(Location(self.0 - 1, self.1 - 1)),
+        }
+    }
+}
+
 impl Labyrinth {
     pub fn size(&self) -> (usize, usize) {
         (self.tiles[0].len(), self.tiles.len())
@@ -39,18 +62,7 @@ impl Labyrinth {
     }
 
     pub fn inspect_from(&self, location: Location, direction: Direction) -> Tile {
-        let location = match direction {
-            Direction::West => Location(location.0.saturating_sub(1), location.1),
-            Direction::NorthWest => Location(location.0.saturating_sub(1), location.1 + 1),
-            Direction::North => Location(location.0, location.1 + 1),
-            Direction::NorthEast => Location(location.0 + 1, location.1 + 1),
-            Direction::East => Location(location.0 + 1, location.1),
-            Direction::SouthEast => Location(location.0 + 1, location.1.saturating_sub(1)),
-            Direction::South => Location(location.0, location.1.saturating_sub(1)),
-            Direction::SouthWest => Location(location.0.saturating_sub(1), location.1.saturating_sub(1)),
-        };
-
-        self.tile(location).unwrap_or(Tile::Wall)
+        (location + direction).and_then(|p| self.tile(p)).unwrap_or(Tile::Wall)
     }
 }
 

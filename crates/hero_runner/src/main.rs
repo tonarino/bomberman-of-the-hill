@@ -1,6 +1,7 @@
 use std::{sync::Arc, thread, time::Duration};
 use bevy::prelude::*;
 
+use hero_behaviour::HeroBehaviourPlugin;
 use hero_lib::{Action, world::{Direction, Tile, World}};
 use labyrinth::Labyrinth;
 use rendering::draw_labyrinth;
@@ -14,21 +15,12 @@ mod rendering;
 mod hero_hotswap;
 mod hero_behaviour;
 
-//struct SolidWorld {
-//    tile: Tile // All tiles are the same in a solid world!
-//}
-//
-//impl World for SolidWorld {
-//    fn inspect(&self, _: Direction) -> Tile {
-//        self.tile
-//    }
-//}
-
 fn main() {
     App::build()
         .add_plugins_with(DefaultPlugins, |group| {
             group.disable::<bevy::audio::AudioPlugin>()
         })
+        .add_plugin(HeroBehaviourPlugin)
         .add_startup_system(setup.system())
         .run();
 }
@@ -36,7 +28,6 @@ fn main() {
 fn setup(
     mut commands: Commands,
     mut materials: ResMut<Assets<ColorMaterial>>,
-    asset_server: Res<AssetServer>,
 ) {
     commands.spawn_bundle(OrthographicCameraBundle::new_2d());
     commands.spawn_bundle(UiCameraBundle::default());

@@ -3,8 +3,23 @@ use hero_lib::world::Tile::{self, Wall};
 
 use crate::labyrinth::{Labyrinth, Location};
 
-const TILE_WIDTH_PX: f32 = 50.0;
-const LABYRINTH_Z: f32 = 0.0;
+pub const TILE_WIDTH_PX: f32 = 50.0;
+pub const LABYRINTH_Z: f32 = 0.0;
+
+impl Location {
+    pub fn as_pixels(&self, labyrinth: &Labyrinth, z: f32) -> Vec3 {
+        let (width, height) = labyrinth.size();
+        let labyrinth_offset = Vec2::new(
+            -(TILE_WIDTH_PX / 2.0) * width as f32,
+            -(TILE_WIDTH_PX / 2.0) * height as f32
+        );
+        Vec3::new(
+            labyrinth_offset.x + (self.0 as f32) * TILE_WIDTH_PX,
+            labyrinth_offset.y + (self.1 as f32) * TILE_WIDTH_PX,
+            z,
+        )
+    }
+}
 
 pub fn draw_labyrinth(commands: &mut Commands, labyrinth: &Labyrinth, materials: &mut Assets<ColorMaterial>) {
     let (floor, wall, lava, switch) = (
