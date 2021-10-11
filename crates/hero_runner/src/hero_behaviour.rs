@@ -2,13 +2,22 @@ use std::sync::Arc;
 
 use bevy::prelude::*;
 use hero_lib::Action;
-use wasmtime::{Caller, Engine, Func, Module, Store};
+use wasmtime::{Caller, Func, Instance, Store};
 
 use crate::{FOOL_WASM, labyrinth::{self, INITIAL_LOCATION, Labyrinth}, rendering::{LABYRINTH_Z, TILE_WIDTH_PX}};
 
 pub struct HeroBehaviourPlugin;
 
-struct Hero { location: labyrinth::Location, }
+struct Hero {
+    store: wasmtime::Store<HeroStoreData>,
+    instance: wasmtime::Instance,
+}
+
+// Contains all state relevant to the wasm hero module
+struct HeroStoreData {
+    location: labyrinth::Location,
+    labyrinth: Arc<Labyrinth>,
+}
 
 struct HeroTimer;
 
@@ -24,6 +33,7 @@ impl Plugin for HeroBehaviourPlugin {
 fn setup(
     mut commands: Commands,
     engine: Res<wasmtime::Engine>,
+    labyrinth: Res<Arc<Labyrinth>>,
     mut materials: ResMut<Assets<ColorMaterial>>,
     asset_server: Res<AssetServer>,
 ) {
@@ -32,10 +42,24 @@ fn setup(
         .insert(Timer::from_seconds(1.0, true))
         .insert(HeroTimer);
 
+    // This will happen on hotswap. Hardcoded here for now:
+    let data = HeroStoreData {
+        location: INITIAL_LOCATION,
+        labyrinth: labyrinth.clone()
+    };
+    let mut store = Store::new(&engine, data);
+    let hero_inspect_wasm_import = Func::wrap(&mut store,
+        |caller: Caller<'_, HeroStoreData>, direction_raw: u32| -> u32 {
+            let data = caller.data();
+            data.labyrinth.inspect_from(data.location, direction_raw.into()) as u32
+        }
+    );
+    let module = wasmtime::Module::new(&engine, FOOL_WASM).unwrap();
+    let imports = &[hero_inspect_wasm_import.into()];
+    let instance = wasmtime::Instance::new(&mut store, &module, imports).unwrap();
+    let hero = Hero { store, instance, };
+
     let texture_handle = asset_server.load("graphics/hero.png");
-        // This will happen on hotswap. Hardcoded here for now:
-        let hero = Hero { location: INITIAL_LOCATION };
-        let module = wasmtime::Module::new(&engine, FOOL_WASM).unwrap();
         commands
             .spawn()
             .insert(hero)
@@ -48,11 +72,11 @@ fn setup(
 }
 
 fn hero_positioning_system(
-    labyrinth: Res<Labyrinth>,
+    labyrinth: Res<Arc<Labyrinth>>,
     mut hero_query: Query<(&mut Transform, &Hero)>
 ) {
     for (mut transform, hero) in hero_query.iter_mut() {
-        transform.translation = hero.location.as_pixels(&labyrinth, LABYRINTH_Z + 1.0);
+        transform.translation = hero.store.data().location.as_pixels(&labyrinth, LABYRINTH_Z + 1.0);
     }
 }
 
@@ -60,7 +84,7 @@ fn hero_movement_system(
     time: Res<Time>,
     mut timer_query: Query<&mut Timer, With<HeroTimer>>,
     mut hero_query: Query<(Entity, &mut Hero, &mut wasmtime::Module)>,
-    labyrinth: Res<Labyrinth>,
+    labyrinth: Res<Arc<Labyrinth>>,
     engine: Res<wasmtime::Engine>,
     mut commands: Commands,
 ) {
@@ -75,15 +99,15 @@ fn hero_movement_system(
 
 fn apply_action(commands: &mut Commands, action: Action, hero: &mut Hero, labyrinth: &Labyrinth, hero_entity: Entity) {
     let new_location = match action {
-        Action::Move(direction) => (hero.location + direction).unwrap_or(hero.location),
-        Action::StayStill => hero.location,
+        Action::Move(direction) => (hero.store.data().location + direction).unwrap_or(hero.store.data().location),
+        Action::StayStill => hero.store.data().location,
     };
 
     match labyrinth.tile(new_location) {
         Some(hero_lib::world::Tile::Wall) => println!("The hero bumps into a wall at {:?}.", new_location),
         Some(hero_lib::world::Tile::EmptyFloor) => {
             println!("The hero walks into {:?}", new_location);
-            hero.location = new_location;
+            hero.store.data_mut().location = new_location;
         },
         Some(hero_lib::world::Tile::Switch) => println!("The hero presses a switch at {:?}", new_location),
         Some(hero_lib::world::Tile::Lava) => {
@@ -102,15 +126,6 @@ fn kill_hero(commands: &mut Commands, hero_entity: Entity, new_location: labyrin
 }
 
 fn wasm_hero_action(engine: &wasmtime::Engine, labyrinth: &Labyrinth, hero: &mut Hero, module: &mut wasmtime::Module) -> Action {
-    let mut store = Store::new(&engine, (hero, labyrinth));
-    let hero_inspect_wasm_import = Func::wrap(&mut store,
-        |caller: Caller<'_, (&mut Hero, &Labyrinth)>, direction_raw: u32| -> u32 {
-            let (hero, labyrinth) = caller.data();
-            labyrinth.inspect_from(hero.location, direction_raw.into()) as u32
-        }
-    );
-    let imports = &[hero_inspect_wasm_import.into()];
-    let instance = wasmtime::Instance::new(&mut store, module, imports).unwrap();
-    let act = instance.get_typed_func::<(), u32, _>(&mut store, "__act").unwrap();
-    Action::from(act.call(&mut store, ()).unwrap())
+    let act = hero.instance.get_typed_func::<(), u32, _>(&mut hero.store, "__act").unwrap();
+    Action::from(act.call(&mut hero.store, ()).unwrap())
 }
