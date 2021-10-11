@@ -1,28 +1,36 @@
-use std::{thread, time::Duration};
+use std::{sync::Arc, thread, time::Duration};
 use bevy::prelude::*;
 
 use hero_lib::{Action, world::{Direction, Tile, World}};
+use labyrinth::Labyrinth;
+use rendering::draw_labyrinth;
 use wasmtime::{Caller, Engine, Func, Instance, Module, Store};
 
 static WANDERER_WASM: &[u8] = include_bytes!("../../../target/wasm32-unknown-unknown/debug/wanderer.wasm");
 static FOOL_WASM: &[u8] = include_bytes!("../../../target/wasm32-unknown-unknown/debug/fool.wasm");
 
 mod labyrinth;
+mod rendering;
+mod hero_hotswap;
+mod hero_behaviour;
 
-struct SolidWorld {
-    tile: Tile // All tiles are the same in a solid world!
-}
-
-impl World for SolidWorld {
-    fn inspect(&self, _: Direction) -> Tile {
-        self.tile
-    }
-}
+//struct SolidWorld {
+//    tile: Tile // All tiles are the same in a solid world!
+//}
+//
+//impl World for SolidWorld {
+//    fn inspect(&self, _: Direction) -> Tile {
+//        self.tile
+//    }
+//}
 
 fn main() {
     App::build()
-        .add_plugins(DefaultPlugins)
-        .add_startup_system(setup.system());
+        .add_plugins_with(DefaultPlugins, |group| {
+            group.disable::<bevy::audio::AudioPlugin>()
+        })
+        .add_startup_system(setup.system())
+        .run();
 }
 
 fn setup(
@@ -33,12 +41,9 @@ fn setup(
     commands.spawn_bundle(OrthographicCameraBundle::new_2d());
     commands.spawn_bundle(UiCameraBundle::default());
 
-    let (floor, walls, lava, switch) = (
-        materials.add(Color::BEIGE.into()),
-        materials.add(Color::BLACK.into()),
-        materials.add(Color::RED.into()),
-        materials.add(Color::BLUE.into()),
-    );
+    let labyrinth = Labyrinth::from(labyrinth::DANGEROUS);
+    draw_labyrinth(&mut commands, &labyrinth, &mut materials);
+    commands.insert_resource(labyrinth);
 }
 
 //fn main() {
