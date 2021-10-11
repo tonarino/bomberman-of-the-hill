@@ -10,7 +10,6 @@ pub fn wasm_hero(_: TokenStream, input: TokenStream) -> TokenStream {
     let expanded = quote! {
         #hero_struct
 
-        // Abstract these away into a macro
         lazy_static::lazy_static! {
             static ref __HERO: Mutex<#hero_identifier> = Mutex::new(#hero_identifier::spawn());
         }
