@@ -31,7 +31,8 @@ impl Plugin for HeroBehaviourPlugin {
         app.add_startup_system(setup.system())
             .insert_resource(wasmtime::Engine::default())
             .add_system(hero_positioning_system.system())
-            .add_system(hero_movement_system.system());
+            .add_system(hero_movement_system.system())
+            .add_system(death_marker_cleanup_system.system());
     }
 }
 
@@ -46,8 +47,18 @@ fn setup(
         .spawn()
         .insert(Timer::from_seconds(1.0, true))
         .insert(HeroTimer);
-
     // This will happen on hotswap. Hardcoded here for now:
+    spawn_hero_from_wasm_bytes(FOOL_WASM, &labyrinth, &engine, &asset_server, &mut commands, &mut materials);
+}
+
+fn spawn_hero_from_wasm_bytes<T: AsRef<[u8]>>(
+    bytes: T,
+    labyrinth: &Arc<Labyrinth>,
+    engine: &wasmtime::Engine,
+    asset_server: &AssetServer,
+    commands: &mut Commands,
+    materials: &mut Assets<ColorMaterial>,
+) {
     let data = HeroStoreData {
         location: INITIAL_LOCATION,
         labyrinth: labyrinth.clone(),
@@ -61,11 +72,10 @@ fn setup(
                 .inspect_from(data.location, direction_raw.into()) as u32
         },
     );
-    let module = wasmtime::Module::new(&engine, FOOL_WASM).unwrap();
+    let module = wasmtime::Module::new(&engine, bytes).unwrap();
     let imports = &[hero_inspect_wasm_import.into()];
     let instance = wasmtime::Instance::new(&mut store, &module, imports).unwrap();
     let hero = Hero { store, instance };
-
     let texture_handle = asset_server.load("graphics/hero.png");
     commands
         .spawn()
@@ -97,6 +107,7 @@ fn hero_movement_system(
     mut hero_query: Query<(Entity, &mut Hero)>,
     labyrinth: Res<Arc<Labyrinth>>,
     asset_server: Res<AssetServer>,
+    engine: Res<wasmtime::Engine>,
     mut materials: ResMut<Assets<ColorMaterial>>,
     mut commands: Commands,
 ) {
@@ -108,6 +119,7 @@ fn hero_movement_system(
                 &mut commands,
                 &asset_server,
                 &mut materials,
+                &engine,
                 action,
                 &mut hero,
                 &labyrinth,
@@ -121,9 +133,10 @@ fn apply_action(
     commands: &mut Commands,
     asset_server: &AssetServer,
     materials: &mut Assets<ColorMaterial>,
+    engine: &wasmtime::Engine,
     action: Action,
     hero: &mut Hero,
-    labyrinth: &Labyrinth,
+    labyrinth: &Arc<Labyrinth>,
     hero_entity: Entity,
 ) {
     let new_location = match action {
@@ -146,10 +159,11 @@ fn apply_action(
         }
         Some(hero_lib::world::Tile::Lava) => {
             println!("The hero dissolves in lava at {:?}", new_location);
-            kill_hero(
+            kill_hero_and_respawn(
                 commands,
                 &asset_server,
                 materials,
+                engine,
                 hero_entity,
                 new_location,
                 labyrinth,
@@ -160,10 +174,11 @@ fn apply_action(
                 "The hero somehow walks into the void at {:?}...",
                 new_location
             );
-            kill_hero(
+            kill_hero_and_respawn(
                 commands,
                 &asset_server,
                 materials,
+                engine,
                 hero_entity,
                 new_location,
                 labyrinth,
@@ -172,27 +187,53 @@ fn apply_action(
     };
 }
 
-fn kill_hero(
+fn kill_hero_and_respawn(
     commands: &mut Commands,
     asset_server: &AssetServer,
     materials: &mut Assets<ColorMaterial>,
+    engine: &wasmtime::Engine,
     hero_entity: Entity,
     new_location: labyrinth::Location,
-    labyrinth: &Labyrinth,
+    labyrinth: &Arc<Labyrinth>,
 ) {
     let texture_handle = asset_server.load("graphics/death.png");
     commands.entity(hero_entity).despawn_recursive();
-    commands.spawn_bundle(SpriteBundle {
-        material: materials.add(texture_handle.into()),
-        sprite: Sprite::new(Vec2::splat(TILE_WIDTH_PX)),
-        transform: Transform::from_translation(new_location.as_pixels(labyrinth, LABYRINTH_Z + 1.0)),
-        ..Default::default()
-    }).insert(DeathMarker);
+    commands
+        .spawn_bundle(SpriteBundle {
+            material: materials.add(texture_handle.into()),
+            sprite: Sprite::new(Vec2::splat(TILE_WIDTH_PX)),
+            transform: Transform::from_translation(
+                new_location.as_pixels(labyrinth, LABYRINTH_Z + 1.0),
+            ),
+            ..Default::default()
+        })
+        .insert(DeathMarker)
+        .insert(Timer::from_seconds(2.0, false));
+
+    spawn_hero_from_wasm_bytes(
+        FOOL_WASM,
+        labyrinth,
+        engine,
+        asset_server,
+        commands,
+        materials
+    )
+
 }
 
-fn wasm_hero_action(
-    hero: &mut Hero,
-) -> Action {
+fn death_marker_cleanup_system(
+    mut commands: Commands,
+    mut query: Query<(Entity, &mut Timer), With<DeathMarker>>,
+    time: Res<Time>,
+) {
+    for (entity, mut timer) in query.iter_mut() {
+        if timer.tick(time.delta()).just_finished() {
+            commands.entity(entity).despawn_recursive();
+        }
+    }
+}
+
+fn wasm_hero_action(hero: &mut Hero) -> Action {
     let act = hero
         .instance
         .get_typed_func::<(), u32, _>(&mut hero.store, "__act")

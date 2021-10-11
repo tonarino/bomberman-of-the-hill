@@ -1,6 +1,6 @@
 use std::ops::Add;
 
-use hero_lib::world::{Direction, Tile, World};
+use hero_lib::world::{Direction, Tile};
 
 pub const INITIAL_LOCATION: Location = Location(4, 0);
 
