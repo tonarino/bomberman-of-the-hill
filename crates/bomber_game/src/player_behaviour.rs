@@ -1,3 +1,5 @@
+//! Defines a Bevy plugin that governs spawning and despawning players from .wasm handles,
+//! as well as the continuous behaviour of players as they exist in the game world.
 use std::sync::Arc;
 
 use anyhow::anyhow;
@@ -13,19 +15,26 @@ use crate::{
 
 pub struct PlayerBehaviourPlugin;
 
+/// The `Player` struct is composed of player state (both internal and external
+/// to the `wasm` environment, a compiled, live `wasm` instance, and a handle
+/// to its associated filesystem asset to regulate spawning and despawning.
 struct Player {
     store: wasmtime::Store<PlayerStoreData>,
     instance: wasmtime::Instance,
     handle: Handle<WasmPlayerAsset>,
 }
 
-// Contains all state relevant to the wasm player module
+/// Contains all state relevant to the wasm player module. This is data that the
+/// player can't access directly from its own context, but that the game needs to track
+/// in relation to that player.
 struct PlayerStoreData {
     location: labyrinth::Location,
     labyrinth: Arc<Labyrinth>,
 }
 
+/// Marks the timer used to sequence all player actions (the universal tick)
 struct PlayerTimer;
+/// Marks the skull sprite used to signal a player death for a few seconds
 struct DeathMarker;
 
 impl Plugin for PlayerBehaviourPlugin {
@@ -46,6 +55,8 @@ fn setup(mut commands: Commands) {
         .insert(PlayerTimer);
 }
 
+/// Ensures the number of active live players matches the `.wasm` files under `assets/players`
+/// at all times, by recursively spawning and despawning players.
 fn player_spawn_system(
     mut commands: Commands,
     handles: Res<PlayerHandles>,
@@ -79,6 +90,9 @@ fn player_spawn_system(
     }
 }
 
+/// Loads the `.wasm` bytes, JIT compiles them and stores all player-related state
+/// in an entity. The import functions binding is done here, which means players effectively
+/// get a "callback" into the world to use as they remain alive.
 fn spawn_player(
     handle: Handle<WasmPlayerAsset>,
     labyrinth: &Arc<Labyrinth>,
@@ -92,10 +106,20 @@ fn spawn_player(
         location: INITIAL_LOCATION,
         labyrinth: labyrinth.clone(),
     };
+
+    // The Store owns all player-adjacent data, whether it's internal to the wasm module
+    // or simply associated to the player (e.g. their position in the map)
     let mut store = Store::new(&engine, data);
+
+    // The import bindings allow a player to call back to the game world. Note there is a security
+    // implication here; a player may call this function at any time. Currently it only requires
+    // shared immutable access through an `Arc`, but if the need arises for mutable access we'll
+    // have to worry about metering and avoiding potential deadlocks.
     let player_inspect_wasm_import = Func::wrap(
         &mut store,
         |caller: Caller<'_, PlayerStoreData>, direction_raw: u32| -> u32 {
+            // Through the `caller` struct, the `wasm` instance is able to
+            // access game state by retrieving a `PlayerStoreData` object.
             let data = caller.data();
             data.labyrinth
                 .inspect_from(data.location, direction_raw.into()) as u32
@@ -108,8 +132,10 @@ fn spawn_player(
         .bytes
         .clone();
 
+    // Here the raw `wasm` is JIT compiled into a stateless module.
     let module = wasmtime::Module::new(&engine, wasm_bytes).unwrap();
     let imports = &[player_inspect_wasm_import.into()];
+    // Here the module is bound to a store and a set of imports to form a stateful instance.
     let instance = wasmtime::Instance::new(&mut store, &module, imports).unwrap();
     let player = Player {
         store,
@@ -132,6 +158,8 @@ fn spawn_player(
     Ok(())
 }
 
+/// Continuously updates the player transform to match its abstract location
+/// in the labyrinth.
 fn player_positioning_system(
     labyrinth: Res<Arc<Labyrinth>>,
     mut players: Query<(&mut Transform, &Player)>,
@@ -145,6 +173,9 @@ fn player_positioning_system(
     }
 }
 
+/// Every universal tick, queries all players for their desired action and applies
+/// it. At the moment this only results in movement (or death) but will likely expand
+/// into more complex actions.
 fn player_movement_system(
     time: Res<Time>,
     mut timer_query: Query<&mut Timer, With<PlayerTimer>>,
