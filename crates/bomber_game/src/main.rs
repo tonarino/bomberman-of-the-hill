@@ -1,22 +1,15 @@
 use bevy::prelude::*;
-use hero_hotswap::HeroHotswapPlugin;
+use player_hotswap::PlayerHotswapPlugin;
 use std::sync::Arc;
 
-use hero_behaviour::HeroBehaviourPlugin;
+use player_behaviour::PlayerBehaviourPlugin;
 use labyrinth::Labyrinth;
 use rendering::draw_labyrinth;
 
-#[allow(unused)]
-static WANDERER_WASM: &[u8] =
-    include_bytes!("../../../target/wasm32-unknown-unknown/debug/wanderer.wasm");
-#[allow(unused)]
-static FOOL_WASM: &[u8] = include_bytes!("../../../target/wasm32-unknown-unknown/debug/fool.wasm");
-
-mod hero_behaviour;
-mod hero_hotswap;
+mod player_behaviour;
+mod player_hotswap;
 mod labyrinth;
 mod rendering;
-
 
 fn main() {
     let labyrinth = Labyrinth::from(labyrinth::DANGEROUS);
@@ -25,8 +18,8 @@ fn main() {
         .add_plugins_with(DefaultPlugins, |group| {
             group.disable::<bevy::audio::AudioPlugin>()
         })
-        .add_plugin(HeroBehaviourPlugin)
-        .add_plugin(HeroHotswapPlugin)
+        .add_plugin(PlayerBehaviourPlugin)
+        .add_plugin(PlayerHotswapPlugin)
         .add_startup_system(setup.system())
         .run();
 }

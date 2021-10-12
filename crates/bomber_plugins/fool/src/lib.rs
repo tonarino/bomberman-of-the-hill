@@ -3,14 +3,14 @@ use bomber_lib::{
     world::{Direction, Tile, World},
     Action, Player,
 };
-use bomber_macro::wasm_hero;
+use bomber_macro::wasm_player;
 
-/// To build a `wasm hero`, all that's needed is to implement the
-/// `Hero` trait, which defines how the hero interacts with the
-/// world, and to mark the struct with the `wasm_hero` attribute,
+/// To build a `wasm player`, all that's needed is to implement the
+/// `Player` trait, which defines how the player interacts with the
+/// world, and to mark the struct with the `wasm_player` attribute,
 /// which exposes the `wasm` exports the game expects to hot-swap
-/// the hero in.
-#[wasm_hero]
+/// the player in.
+#[wasm_player]
 struct Fool {
     choice: usize,
 }
