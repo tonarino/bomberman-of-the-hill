@@ -1,6 +1,7 @@
 use bevy::prelude::*;
 use player_hotswap::PlayerHotswapPlugin;
-use std::sync::Arc;
+use std::{convert::TryFrom, sync::Arc};
+use anyhow::Result;
 
 use player_behaviour::PlayerBehaviourPlugin;
 use game_map::GameMap;
@@ -11,8 +12,8 @@ mod player_hotswap;
 mod game_map;
 mod rendering;
 
-fn main() {
-    let game_map = GameMap::from(game_map::DANGEROUS);
+fn main() -> Result<()> {
+    let game_map = GameMap::try_from(game_map::DANGEROUS)?;
     App::build()
         .insert_resource(Arc::new(game_map))
         .add_plugins_with(DefaultPlugins, |group| {
@@ -22,6 +23,7 @@ fn main() {
         .add_plugin(PlayerHotswapPlugin)
         .add_startup_system(setup.system())
         .run();
+    Ok(())
 }
 
 fn setup(

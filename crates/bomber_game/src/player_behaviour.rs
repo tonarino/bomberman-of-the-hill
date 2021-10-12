@@ -150,7 +150,7 @@ fn spawn_player(
         .insert_bundle(SpriteBundle {
             material: materials.add(texture_handle.into()),
             transform: Transform::from_translation(
-                INITIAL_LOCATION.into_pixels(game_map, GAME_MAP_Z + 1.0),
+                INITIAL_LOCATION.as_pixels(game_map, GAME_MAP_Z + 1.0),
             ),
             sprite: Sprite::new(Vec2::splat(TILE_WIDTH_PX)),
             ..Default::default()
@@ -169,7 +169,7 @@ fn player_positioning_system(
             .store
             .data()
             .location
-            .into_pixels(&game_map, GAME_MAP_Z + 1.0);
+            .as_pixels(&game_map, GAME_MAP_Z + 1.0);
     }
 }
 
@@ -274,7 +274,7 @@ fn kill_player(
             material: materials.add(texture_handle.into()),
             sprite: Sprite::new(Vec2::splat(TILE_WIDTH_PX)),
             transform: Transform::from_translation(
-                new_location.into_pixels(game_map, GAME_MAP_Z + 1.0),
+                new_location.as_pixels(game_map, GAME_MAP_Z + 1.0),
             ),
             ..Default::default()
         })

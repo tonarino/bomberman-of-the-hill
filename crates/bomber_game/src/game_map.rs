@@ -1,6 +1,7 @@
-use std::ops::Add;
+use std::{convert::TryFrom, ops::Add};
 
 use bomber_lib::world::{Direction, Tile};
+use anyhow::{anyhow, Result};
 
 use crate::Wrapper;
 
@@ -73,29 +74,37 @@ impl GameMap {
     }
 }
 
-impl From<char> for Wrapper<Tile> {
-    fn from(character: char) -> Self {
-        Wrapper(match character {
-            '.' => Tile::EmptyFloor,
-            '#' => Tile::Wall,
-            'X' => Tile::Lava,
-            's' => Tile::Switch,
-            _ => panic!("Character has no associated tile"),
-        })
+impl TryFrom<char> for Wrapper<Tile> {
+    type Error = anyhow::Error;
+
+    fn try_from(character: char) -> Result<Self, Self::Error> {
+         match character {
+            '.' => Ok(Wrapper(Tile::EmptyFloor)),
+            '#' => Ok(Wrapper(Tile::Wall)),
+            'X' => Ok(Wrapper(Tile::Lava)),
+            's' => Ok(Wrapper(Tile::Switch)),
+            _ => Err(anyhow!("Invalid character for tile: {}", character)),
+        }
     }
 }
 
-impl<T: AsRef<str>> From<T> for GameMap {
-    fn from(text: T) -> Self {
-        let lines: Vec<&str> = text.as_ref().lines().rev().collect();
-        // Very panicky (this should be a TryFrom) but good for a quick test
-        assert!(lines.windows(2).all(|w| w[0].len() == w[1].len()));
-        assert!(lines.len() > 0 && lines[0].len() > 0);
-        let convert_line = |l: &str| -> Vec<Tile> { l.chars().map(|c| Wrapper::<Tile>::from(c).0).collect() };
+impl TryFrom<&str> for GameMap {
+    type Error = anyhow::Error;
 
-        Self {
-            tiles: lines.into_iter().map(convert_line).collect(),
+    fn try_from(text: &str) -> Result<Self> {
+        let lines: Vec<&str> = text.lines().rev().collect();
+        if lines.windows(2).any(|w| w[0].len() != w[1].len()) {
+            Err(anyhow!("Mismatched row sizes in the game map"))
+        } else if lines.len() == 0 || lines[0].len() == 0 {
+            Err(anyhow!("Game map must have at least a row and a column"))
+        } else {
+            let convert_line = |l: &str| -> Result<Vec<Tile>> {
+                l.chars().map(|c| Wrapper::<Tile>::try_from(c).map(|w| w.0)).collect()
+            };
+            let tiles: Result<Vec<Vec<Tile>>> = lines.into_iter().map(convert_line).collect();
+            Ok(Self { tiles: tiles? } )
         }
+
     }
 }
 
@@ -114,7 +123,7 @@ mod tests {
              #X.##..#\n\
              #......#\n\
              ####.###";
-        let game_map = GameMap::from(game_map_text);
+        let game_map = GameMap::try_from(game_map_text).unwrap();
         assert_eq!(game_map.size(), (8, 7));
         assert_eq!(game_map.tile(Location(0, 0)).unwrap(), Tile::Wall);
         assert_eq!(game_map.tile(Location(4, 0)).unwrap(), Tile::EmptyFloor);
