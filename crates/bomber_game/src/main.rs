@@ -1,7 +1,7 @@
 use anyhow::Result;
 use bevy::prelude::*;
 use player_hotswap::PlayerHotswapPlugin;
-use std::{convert::TryFrom, sync::Arc};
+use std::{str::FromStr, sync::Arc};
 
 use game_map::GameMap;
 use player_behaviour::PlayerBehaviourPlugin;
@@ -13,7 +13,7 @@ mod player_hotswap;
 mod rendering;
 
 fn main() -> Result<()> {
-    let game_map = GameMap::try_from(game_map::DANGEROUS)?;
+    let game_map = GameMap::from_str(game_map::DANGEROUS)?;
     App::build()
         .insert_resource(Arc::new(game_map))
         .add_plugins_with(DefaultPlugins, |group| {
@@ -39,7 +39,7 @@ fn setup(
 /// Logs recoverable system errors (to be used at the end of an erroring system chain)
 fn error_sink(In(result): In<Result<()>>) {
     if let Err(e) = result {
-        debug!("Unhandled error {}", e);
+        error!("Unhandled error {}", e);
     }
 }
 

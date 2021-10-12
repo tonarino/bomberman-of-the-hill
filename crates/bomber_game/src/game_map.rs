@@ -1,3 +1,4 @@
+use std::str::FromStr;
 use std::{convert::TryFrom, ops::Add};
 
 use anyhow::{anyhow, Result};
@@ -91,10 +92,10 @@ impl TryFrom<char> for Wrapper<Tile> {
     }
 }
 
-impl TryFrom<&str> for GameMap {
-    type Error = anyhow::Error;
+impl FromStr for GameMap {
+    type Err = anyhow::Error;
 
-    fn try_from(text: &str) -> Result<Self> {
+    fn from_str(text: &str) -> Result<Self> {
         let lines: Vec<&str> = text.lines().rev().collect();
         if lines.windows(2).any(|w| w[0].len() != w[1].len()) {
             Err(anyhow!("Mismatched row sizes in the game map"))
@@ -127,7 +128,7 @@ mod tests {
              #X.##..#\n\
              #......#\n\
              ####.###";
-        let game_map = GameMap::try_from(game_map_text).unwrap();
+        let game_map = GameMap::from_str(game_map_text).unwrap();
         assert_eq!(game_map.size(), (8, 7));
         assert_eq!(game_map.tile(Location(0, 0)).unwrap(), Tile::Wall);
         assert_eq!(game_map.tile(Location(4, 0)).unwrap(), Tile::EmptyFloor);
