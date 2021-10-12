@@ -1,7 +1,7 @@
 # Bomberman Of The Hill
 
 Meetup attendees are tasked with training their bombermen to hold a hill. The
-longer its held, the bigger the score and bounty for taking them down!
+longer it's held, the bigger the score and bounty for taking them down!
 
 # Instructions
 
