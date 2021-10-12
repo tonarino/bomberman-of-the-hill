@@ -58,6 +58,7 @@ fn setup(mut commands: Commands) {
 
 /// Ensures the number of active live players matches the `.wasm` files under `assets/players`
 /// at all times, by recursively spawning and despawning players.
+#[allow(clippy::too_many_arguments)]
 fn player_spawn_system(
     mut commands: Commands,
     handles: Res<PlayerHandles>,
@@ -113,7 +114,7 @@ fn spawn_player(
 
     // The Store owns all player-adjacent data, whether it's internal to the wasm module
     // or simply associated to the player (e.g. their position in the map)
-    let mut store = Store::new(&engine, data);
+    let mut store = Store::new(engine, data);
 
     // The import bindings allow a player to call back to the game world. Note there is a security
     // implication here; a player may call this function at any time. Currently it only requires
@@ -132,12 +133,12 @@ fn spawn_player(
 
     let wasm_bytes = assets
         .get(&handle)
-        .ok_or(anyhow!("Wasm asset not found at runtime"))?
+        .ok_or_else(|| anyhow!("Wasm asset not found at runtime"))?
         .bytes
         .clone();
 
     // Here the raw `wasm` is JIT compiled into a stateless module.
-    let module = wasmtime::Module::new(&engine, wasm_bytes)?;
+    let module = wasmtime::Module::new(engine, wasm_bytes)?;
     let imports = &[player_inspect_wasm_import.into()];
     // Here the module is bound to a store and a set of imports to form a stateful instance.
     let instance = wasmtime::Instance::new(&mut store, &module, imports)?;
@@ -251,7 +252,7 @@ fn apply_action(
             );
             kill_player(
                 commands,
-                &asset_server,
+                asset_server,
                 materials,
                 player_entity,
                 new_location,
@@ -265,7 +266,7 @@ fn apply_action(
             );
             kill_player(
                 commands,
-                &asset_server,
+                asset_server,
                 materials,
                 player_entity,
                 new_location,

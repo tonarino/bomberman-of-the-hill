@@ -8,9 +8,9 @@ use crate::{
     Action,
 };
 
-impl Into<u32> for Action {
-    fn into(self) -> u32 {
-        match self {
+impl From<Action> for u32 {
+    fn from(action: Action) -> Self {
+        match action {
             Action::StayStill => 0,
             Action::Move(direction) => direction as u32 + 1,
         }
