@@ -1,6 +1,8 @@
 use std::ops::Add;
 
-use hero_lib::world::{Direction, Tile};
+use bomber_lib::world::{Direction, Tile};
+
+use crate::Wrapper;
 
 pub const INITIAL_LOCATION: Location = Location(4, 0);
 
@@ -67,13 +69,25 @@ impl Labyrinth {
     }
 }
 
+impl From<char> for Wrapper<Tile> {
+    fn from(character: char) -> Self {
+        Wrapper(match character {
+            '.' => Tile::EmptyFloor,
+            '#' => Tile::Wall,
+            'X' => Tile::Lava,
+            's' => Tile::Switch,
+            _ => panic!("Character has no associated tile"),
+        })
+    }
+}
+
 impl<T: AsRef<str>> From<T> for Labyrinth {
     fn from(text: T) -> Self {
         let lines: Vec<&str> = text.as_ref().lines().rev().collect();
         // Very panicky (this should be a TryFrom) but good for a quick test
         assert!(lines.windows(2).all(|w| w[0].len() == w[1].len()));
         assert!(lines.len() > 0 && lines[0].len() > 0);
-        let convert_line = |l: &str| -> Vec<Tile> { l.chars().map(Into::into).collect() };
+        let convert_line = |l: &str| -> Vec<Tile> { l.chars().map(|c| Wrapper::<Tile>::from(c).0).collect() };
 
         Self {
             tiles: lines.into_iter().map(convert_line).collect(),

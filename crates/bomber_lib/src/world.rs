@@ -23,15 +23,3 @@ pub enum Tile {
     Switch,
     EmptyFloor,
 }
-
-impl From<char> for Tile {
-    fn from(character: char) -> Self {
-        match character {
-            '.' => Tile::EmptyFloor,
-            '#' => Tile::Wall,
-            'X' => Tile::Lava,
-            's' => Tile::Switch,
-            _ => panic!("Character has no associated tile"),
-        }
-    }
-}

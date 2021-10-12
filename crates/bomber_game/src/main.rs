@@ -17,6 +17,7 @@ mod hero_hotswap;
 mod labyrinth;
 mod rendering;
 
+
 fn main() {
     let labyrinth = Labyrinth::from(labyrinth::DANGEROUS);
     App::build()
@@ -39,3 +40,6 @@ fn setup(
     commands.spawn_bundle(UiCameraBundle::default());
     draw_labyrinth(&mut commands, &labyrinth, &mut materials);
 }
+
+// General purpose newtype
+pub(crate) struct Wrapper<T>(pub T);

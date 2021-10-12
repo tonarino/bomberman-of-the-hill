@@ -11,7 +11,7 @@ pub fn wasm_hero(_: TokenStream, input: TokenStream) -> TokenStream {
         #hero_struct
 
         lazy_static::lazy_static! {
-            static ref __HERO: Mutex<#hero_identifier> = Mutex::new(#hero_identifier::spawn());
+            static ref __HERO: std::sync::Mutex<#hero_identifier> = std::sync::Mutex::new(#hero_identifier::spawn());
         }
 
         struct __WorldShim;

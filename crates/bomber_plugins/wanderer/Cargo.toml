@@ -1,5 +1,5 @@
 [package]
-name = "fool"
+name = "wanderer"
 version = "0.1.0"
 edition = "2018"
 
@@ -9,11 +9,11 @@ edition = "2018"
 strum = "0.21"
 lazy_static = "1"
 
-[dependencies.hero_lib]
-path = "../../hero_lib"
+[dependencies.bomber_lib]
+path = "../../bomber_lib"
 
-[dependencies.hero_macro]
-path = "../../hero_macro"
+[dependencies.bomber_macro]
+path = "../../bomber_macro"
 
 [lib]
 crate-type = ["cdylib"]

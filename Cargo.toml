@@ -1,17 +1,8 @@
-[package]
-name = "hero"
-version = "0.1.0"
-edition = "2018"
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
-[dependencies]
-
 [workspace]
 members = [
-   "./crates/hero_runner",
-   "./crates/hero_lib",
-   "./crates/hero_macro",
-   "./crates/hero_plugins/wanderer",
-   "./crates/hero_plugins/fool",
+   "./crates/bomber_game",
+   "./crates/bomber_lib",
+   "./crates/bomber_macro",
+   "./crates/bomber_plugins/wanderer",
+   "./crates/bomber_plugins/fool",
 ]

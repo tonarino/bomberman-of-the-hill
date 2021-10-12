@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use anyhow::anyhow;
 use bevy::prelude::*;
-use hero_lib::Action;
+use bomber_lib::Action;
 use wasmtime::{Caller, Func, Store};
 
 use crate::{
@@ -188,17 +188,17 @@ fn apply_action(
     };
 
     match labyrinth.tile(new_location) {
-        Some(hero_lib::world::Tile::Wall) => {
+        Some(bomber_lib::world::Tile::Wall) => {
             println!("The hero bumps into a wall at {:?}.", new_location)
         }
-        Some(hero_lib::world::Tile::EmptyFloor) => {
+        Some(bomber_lib::world::Tile::EmptyFloor) => {
             println!("The hero walks into {:?}", new_location);
             hero.store.data_mut().location = new_location;
         }
-        Some(hero_lib::world::Tile::Switch) => {
+        Some(bomber_lib::world::Tile::Switch) => {
             println!("The hero presses a switch at {:?}", new_location)
         }
-        Some(hero_lib::world::Tile::Lava) => {
+        Some(bomber_lib::world::Tile::Lava) => {
             println!("The hero dissolves in lava at {:?}", new_location);
             kill_hero(
                 commands,

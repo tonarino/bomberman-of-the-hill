@@ -1,13 +1,15 @@
 [package]
-name = "hero_macro"
+name = "bomber_game"
 version = "0.1.0"
 edition = "2018"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-syn = { version = "1.0.63", features = ["full", "fold"] }
-quote = "1.0.9"
+wasmtime = "*"
+bevy = "0.5"
+anyhow = "*"
 
-[lib]
-proc-macro = true
+[dependencies.bomber_lib]
+path = "../bomber_lib"
+

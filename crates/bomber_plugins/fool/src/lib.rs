@@ -1,11 +1,9 @@
-use std::sync::Mutex;
-
-use hero_lib::{
+use bomber_lib::{
     self,
     world::{Direction, Tile, World},
-    Action, Hero,
+    Action, Player,
 };
-use hero_macro::wasm_hero;
+use bomber_macro::wasm_hero;
 
 /// To build a `wasm hero`, all that's needed is to implement the
 /// `Hero` trait, which defines how the hero interacts with the
@@ -17,7 +15,7 @@ struct Fool {
     choice: usize,
 }
 
-impl Hero for Fool {
+impl Player for Fool {
     fn spawn() -> Self {
         Self { choice: 0 }
     }

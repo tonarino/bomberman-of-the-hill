@@ -3,7 +3,7 @@ use std::sync::Mutex;
 use hero_lib::{
     self,
     world::{Direction, Tile, World},
-    Action, Hero,
+    Action, Player,
 };
 use hero_macro::wasm_hero;
 use strum::IntoEnumIterator;
@@ -18,7 +18,7 @@ struct Wanderer {
     preferred_direction: Direction,
 }
 
-impl Hero for Wanderer {
+impl Player for Wanderer {
     fn spawn() -> Self {
         Self {
             preferred_direction: Direction::North,

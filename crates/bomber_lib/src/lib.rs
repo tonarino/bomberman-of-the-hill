@@ -4,7 +4,7 @@ pub mod world;
 
 use world::{Direction, World};
 
-pub trait Hero {
+pub trait Player {
     fn spawn() -> Self;
     fn act(&mut self, world: &impl World) -> Action;
 }
