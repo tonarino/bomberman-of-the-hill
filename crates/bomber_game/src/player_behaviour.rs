@@ -9,8 +9,8 @@ use wasmtime::{Caller, Func, Store};
 
 use crate::{
     player_hotswap::{PlayerHandles, WasmPlayerAsset},
-    labyrinth::{self, Labyrinth, INITIAL_LOCATION},
-    rendering::{LABYRINTH_Z, TILE_WIDTH_PX},
+    game_map::{self, GameMap, INITIAL_LOCATION},
+    rendering::{GAME_MAP_Z, TILE_WIDTH_PX},
 };
 
 pub struct PlayerBehaviourPlugin;
@@ -28,8 +28,8 @@ struct Player {
 /// player can't access directly from its own context, but that the game needs to track
 /// in relation to that player.
 struct PlayerStoreData {
-    location: labyrinth::Location,
-    labyrinth: Arc<Labyrinth>,
+    location: game_map::Location,
+    game_map: Arc<GameMap>,
 }
 
 /// Marks the timer used to sequence all player actions (the universal tick)
@@ -61,7 +61,7 @@ fn player_spawn_system(
     mut commands: Commands,
     handles: Res<PlayerHandles>,
     players: Query<(Entity, &Player)>,
-    labyrinth: Res<Arc<Labyrinth>>,
+    game_map: Res<Arc<GameMap>>,
     engine: Res<wasmtime::Engine>,
     asset_server: Res<AssetServer>,
     assets: Res<Assets<WasmPlayerAsset>>,
@@ -78,7 +78,7 @@ fn player_spawn_system(
         if players.iter().all(|(_, player)| player.handle.id != handle.id) {
             spawn_player(
                 handle.clone(),
-                &labyrinth,
+                &game_map,
                 &engine,
                 &asset_server,
                 &assets,
@@ -95,7 +95,7 @@ fn player_spawn_system(
 /// get a "callback" into the world to use as they remain alive.
 fn spawn_player(
     handle: Handle<WasmPlayerAsset>,
-    labyrinth: &Arc<Labyrinth>,
+    game_map: &Arc<GameMap>,
     engine: &wasmtime::Engine,
     asset_server: &AssetServer,
     assets: &Assets<WasmPlayerAsset>,
@@ -104,7 +104,7 @@ fn spawn_player(
 ) -> Result<(), anyhow::Error> {
     let data = PlayerStoreData {
         location: INITIAL_LOCATION,
-        labyrinth: labyrinth.clone(),
+        game_map: game_map.clone(),
     };
 
     // The Store owns all player-adjacent data, whether it's internal to the wasm module
@@ -121,7 +121,7 @@ fn spawn_player(
             // Through the `caller` struct, the `wasm` instance is able to
             // access game state by retrieving a `PlayerStoreData` object.
             let data = caller.data();
-            data.labyrinth
+            data.game_map
                 .inspect_from(data.location, direction_raw.into()) as u32
         },
     );
@@ -150,7 +150,7 @@ fn spawn_player(
         .insert_bundle(SpriteBundle {
             material: materials.add(texture_handle.into()),
             transform: Transform::from_translation(
-                INITIAL_LOCATION.as_pixels(labyrinth, LABYRINTH_Z + 1.0),
+                INITIAL_LOCATION.into_pixels(game_map, GAME_MAP_Z + 1.0),
             ),
             sprite: Sprite::new(Vec2::splat(TILE_WIDTH_PX)),
             ..Default::default()
@@ -159,9 +159,9 @@ fn spawn_player(
 }
 
 /// Continuously updates the player transform to match its abstract location
-/// in the labyrinth.
+/// in the game_map.
 fn player_positioning_system(
-    labyrinth: Res<Arc<Labyrinth>>,
+    game_map: Res<Arc<GameMap>>,
     mut players: Query<(&mut Transform, &Player)>,
 ) {
     for (mut transform, player) in players.iter_mut() {
@@ -169,7 +169,7 @@ fn player_positioning_system(
             .store
             .data()
             .location
-            .as_pixels(&labyrinth, LABYRINTH_Z + 1.0);
+            .into_pixels(&game_map, GAME_MAP_Z + 1.0);
     }
 }
 
@@ -180,7 +180,7 @@ fn player_movement_system(
     time: Res<Time>,
     mut timer_query: Query<&mut Timer, With<PlayerTimer>>,
     mut player_query: Query<(Entity, &mut Player)>,
-    labyrinth: Res<Arc<Labyrinth>>,
+    game_map: Res<Arc<GameMap>>,
     asset_server: Res<AssetServer>,
     mut materials: ResMut<Assets<ColorMaterial>>,
     mut commands: Commands,
@@ -195,20 +195,21 @@ fn player_movement_system(
                 &mut materials,
                 action,
                 &mut player,
-                &labyrinth,
+                &game_map,
                 entity,
             );
         }
     }
 }
 
+/// Applies the action chosen by a player, causing an impact on the world or itself.
 fn apply_action(
     commands: &mut Commands,
     asset_server: &AssetServer,
     materials: &mut Assets<ColorMaterial>,
     action: Action,
     player: &mut Player,
-    labyrinth: &Arc<Labyrinth>,
+    game_map: &Arc<GameMap>,
     player_entity: Entity,
 ) {
     let new_location = match action {
@@ -218,7 +219,7 @@ fn apply_action(
         Action::StayStill => player.store.data().location,
     };
 
-    match labyrinth.tile(new_location) {
+    match game_map.tile(new_location) {
         Some(bomber_lib::world::Tile::Wall) => {
             println!("The player bumps into a wall at {:?}.", new_location)
         }
@@ -237,7 +238,7 @@ fn apply_action(
                 materials,
                 player_entity,
                 new_location,
-                labyrinth,
+                game_map,
             );
         }
         None => {
@@ -251,19 +252,20 @@ fn apply_action(
                 materials,
                 player_entity,
                 new_location,
-                labyrinth,
+                game_map,
             );
         }
     };
 }
 
+/// Despawns a player and leaves a death marker for a few seconds.
 fn kill_player(
     commands: &mut Commands,
     asset_server: &AssetServer,
     materials: &mut Assets<ColorMaterial>,
     player_entity: Entity,
-    new_location: labyrinth::Location,
-    labyrinth: &Arc<Labyrinth>,
+    new_location: game_map::Location,
+    game_map: &Arc<GameMap>,
 ) {
     let texture_handle = asset_server.load("graphics/death.png");
     commands.entity(player_entity).despawn_recursive();
@@ -272,7 +274,7 @@ fn kill_player(
             material: materials.add(texture_handle.into()),
             sprite: Sprite::new(Vec2::splat(TILE_WIDTH_PX)),
             transform: Transform::from_translation(
-                new_location.as_pixels(labyrinth, LABYRINTH_Z + 1.0),
+                new_location.into_pixels(game_map, GAME_MAP_Z + 1.0),
             ),
             ..Default::default()
         })
@@ -280,6 +282,7 @@ fn kill_player(
         .insert(Timer::from_seconds(2.0, false));
 }
 
+/// Cleans up death markers as their timers expire.
 fn death_marker_cleanup_system(
     mut commands: Commands,
     mut query: Query<(Entity, &mut Timer), With<DeathMarker>>,
@@ -292,6 +295,7 @@ fn death_marker_cleanup_system(
     }
 }
 
+/// Executes the `.wasm` export to get the player's decision given its current surroundings.
 fn wasm_player_action(player: &mut Player) -> Action {
     let act = player
         .instance

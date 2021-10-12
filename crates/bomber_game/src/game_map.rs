@@ -7,7 +7,9 @@ use crate::Wrapper;
 pub const INITIAL_LOCATION: Location = Location(4, 0);
 
 #[allow(unused)]
-pub const EASY: &str = "###...###\n\
+#[rustfmt::skip]
+pub const EASY: &str =
+    "###...###\n\
      ##.....##\n\
      #..###..#\n\
      #..###..#\n\
@@ -16,7 +18,9 @@ pub const EASY: &str = "###...###\n\
      ####.####";
 
 #[allow(unused)]
-pub const DANGEROUS: &str = "####.####\n\
+#[rustfmt::skip]
+pub const DANGEROUS: &str =
+    "####.####\n\
      #.......#\n\
      #.#####.#\n\
      #.XXXXX.#\n\
@@ -24,7 +28,7 @@ pub const DANGEROUS: &str = "####.####\n\
      #.......#\n\
      ####.####";
 
-pub struct Labyrinth {
+pub struct GameMap {
     tiles: Vec<Vec<Tile>>,
 }
 
@@ -50,7 +54,7 @@ impl Add<Direction> for Location {
     }
 }
 
-impl Labyrinth {
+impl GameMap {
     pub fn size(&self) -> (usize, usize) {
         (self.tiles[0].len(), self.tiles.len())
     }
@@ -81,7 +85,7 @@ impl From<char> for Wrapper<Tile> {
     }
 }
 
-impl<T: AsRef<str>> From<T> for Labyrinth {
+impl<T: AsRef<str>> From<T> for GameMap {
     fn from(text: T) -> Self {
         let lines: Vec<&str> = text.as_ref().lines().rev().collect();
         // Very panicky (this should be a TryFrom) but good for a quick test
@@ -100,20 +104,22 @@ mod tests {
     use super::*;
 
     #[test]
-    fn parsing_labyrinths() {
-        let labyrinth_text = "####.###\n\
+    fn parsing_game_maps() {
+        #[rustfmt::skip]
+        let game_map_text =
+            "####.###\n\
              #......#\n\
              #.####.#\n\
              #..##..#\n\
              #X.##..#\n\
              #......#\n\
              ####.###";
-        let labyrinth = Labyrinth::from(labyrinth_text);
-        assert_eq!(labyrinth.size(), (8, 7));
-        assert_eq!(labyrinth.tile(Location(0, 0)).unwrap(), Tile::Wall);
-        assert_eq!(labyrinth.tile(Location(4, 0)).unwrap(), Tile::EmptyFloor);
-        assert_eq!(labyrinth.tile(Location(1, 1)).unwrap(), Tile::EmptyFloor);
-        assert_eq!(labyrinth.tile(Location(1, 2)).unwrap(), Tile::Lava);
-        assert_eq!(labyrinth.tile(Location(8, 8)), None);
+        let game_map = GameMap::from(game_map_text);
+        assert_eq!(game_map.size(), (8, 7));
+        assert_eq!(game_map.tile(Location(0, 0)).unwrap(), Tile::Wall);
+        assert_eq!(game_map.tile(Location(4, 0)).unwrap(), Tile::EmptyFloor);
+        assert_eq!(game_map.tile(Location(1, 1)).unwrap(), Tile::EmptyFloor);
+        assert_eq!(game_map.tile(Location(1, 2)).unwrap(), Tile::Lava);
+        assert_eq!(game_map.tile(Location(8, 8)), None);
     }
 }

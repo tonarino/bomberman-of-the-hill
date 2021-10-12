@@ -3,18 +3,18 @@ use player_hotswap::PlayerHotswapPlugin;
 use std::sync::Arc;
 
 use player_behaviour::PlayerBehaviourPlugin;
-use labyrinth::Labyrinth;
-use rendering::draw_labyrinth;
+use game_map::GameMap;
+use rendering::draw_game_map;
 
 mod player_behaviour;
 mod player_hotswap;
-mod labyrinth;
+mod game_map;
 mod rendering;
 
 fn main() {
-    let labyrinth = Labyrinth::from(labyrinth::DANGEROUS);
+    let game_map = GameMap::from(game_map::DANGEROUS);
     App::build()
-        .insert_resource(Arc::new(labyrinth))
+        .insert_resource(Arc::new(game_map))
         .add_plugins_with(DefaultPlugins, |group| {
             group.disable::<bevy::audio::AudioPlugin>()
         })
@@ -27,11 +27,11 @@ fn main() {
 fn setup(
     mut commands: Commands,
     mut materials: ResMut<Assets<ColorMaterial>>,
-    labyrinth: Res<Arc<Labyrinth>>,
+    game_map: Res<Arc<GameMap>>,
 ) {
     commands.spawn_bundle(OrthographicCameraBundle::new_2d());
     commands.spawn_bundle(UiCameraBundle::default());
-    draw_labyrinth(&mut commands, &labyrinth, &mut materials);
+    draw_game_map(&mut commands, &game_map, &mut materials);
 }
 
 // General purpose newtype
