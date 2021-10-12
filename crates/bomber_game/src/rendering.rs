@@ -33,7 +33,6 @@ pub fn draw_game_map(
         materials.add(Color::BLUE.into()),
     );
     let (width, height) = game_map.size();
-    println!("Game map size is {}, {}", width, height);
     for i in 0..width {
         for j in 0..height {
             let material = match game_map.tile(Location(i, j)) {

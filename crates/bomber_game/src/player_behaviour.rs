@@ -2,14 +2,15 @@
 //! as well as the continuous behaviour of players as they exist in the game world.
 use std::sync::Arc;
 
-use anyhow::anyhow;
+use anyhow::{anyhow, Result};
 use bevy::prelude::*;
 use bomber_lib::Action;
 use wasmtime::{Caller, Func, Store};
 
 use crate::{
-    player_hotswap::{PlayerHandles, WasmPlayerAsset},
+    error_sink,
     game_map::{self, GameMap, INITIAL_LOCATION},
+    player_hotswap::{PlayerHandles, WasmPlayerAsset},
     rendering::{GAME_MAP_Z, TILE_WIDTH_PX},
 };
 
@@ -43,7 +44,7 @@ impl Plugin for PlayerBehaviourPlugin {
             .insert_resource(wasmtime::Engine::default())
             .add_system(player_spawn_system.system())
             .add_system(player_positioning_system.system())
-            .add_system(player_movement_system.system())
+            .add_system(player_movement_system.system().chain(error_sink.system()))
             .add_system(death_marker_cleanup_system.system());
     }
 }
@@ -75,7 +76,10 @@ fn player_spawn_system(
     }
     // Spawn all missing players (if the wasm file was just loaded)
     for handle in handles.0.iter() {
-        if players.iter().all(|(_, player)| player.handle.id != handle.id) {
+        if players
+            .iter()
+            .all(|(_, player)| player.handle.id != handle.id)
+        {
             spawn_player(
                 handle.clone(),
                 &game_map,
@@ -133,10 +137,10 @@ fn spawn_player(
         .clone();
 
     // Here the raw `wasm` is JIT compiled into a stateless module.
-    let module = wasmtime::Module::new(&engine, wasm_bytes).unwrap();
+    let module = wasmtime::Module::new(&engine, wasm_bytes)?;
     let imports = &[player_inspect_wasm_import.into()];
     // Here the module is bound to a store and a set of imports to form a stateful instance.
-    let instance = wasmtime::Instance::new(&mut store, &module, imports).unwrap();
+    let instance = wasmtime::Instance::new(&mut store, &module, imports)?;
     let player = Player {
         store,
         instance,
@@ -184,7 +188,7 @@ fn player_movement_system(
     asset_server: Res<AssetServer>,
     mut materials: ResMut<Assets<ColorMaterial>>,
     mut commands: Commands,
-) {
+) -> Result<()> {
     let mut timer = timer_query.single_mut().unwrap();
     if timer.tick(time.delta()).just_finished() {
         for (entity, mut player) in player_query.iter_mut() {
@@ -193,13 +197,14 @@ fn player_movement_system(
                 &mut commands,
                 &asset_server,
                 &mut materials,
-                action,
+                action?,
                 &mut player,
                 &game_map,
                 entity,
             );
         }
     }
+    Ok(())
 }
 
 /// Applies the action chosen by a player, causing an impact on the world or itself.
@@ -221,17 +226,29 @@ fn apply_action(
 
     match game_map.tile(new_location) {
         Some(bomber_lib::world::Tile::Wall) => {
-            println!("The player bumps into a wall at {:?}.", new_location)
+            info!(
+                "A player ({:?}) bumps into a wall at {:?}.",
+                player_entity, new_location
+            )
         }
         Some(bomber_lib::world::Tile::EmptyFloor) => {
-            println!("The player walks into {:?}", new_location);
+            info!(
+                "A player ({:?}) walks into {:?}",
+                player_entity, new_location
+            );
             player.store.data_mut().location = new_location;
         }
         Some(bomber_lib::world::Tile::Switch) => {
-            println!("The player presses a switch at {:?}", new_location)
+            info!(
+                "A player ({:?}) presses a switch at {:?}",
+                player_entity, new_location
+            )
         }
         Some(bomber_lib::world::Tile::Lava) => {
-            println!("The player dissolves in lava at {:?}", new_location);
+            info!(
+                "A player ({:?}) dissolves in lava at {:?}",
+                player_entity, new_location
+            );
             kill_player(
                 commands,
                 &asset_server,
@@ -242,9 +259,9 @@ fn apply_action(
             );
         }
         None => {
-            println!(
-                "The player somehow walks into the void at {:?}...",
-                new_location
+            info!(
+                "A player ({:?}) somehow walks into the void at {:?}...",
+                player_entity, new_location
             );
             kill_player(
                 commands,
@@ -296,10 +313,9 @@ fn death_marker_cleanup_system(
 }
 
 /// Executes the `.wasm` export to get the player's decision given its current surroundings.
-fn wasm_player_action(player: &mut Player) -> Action {
+fn wasm_player_action(player: &mut Player) -> Result<Action> {
     let act = player
         .instance
-        .get_typed_func::<(), u32, _>(&mut player.store, "__act")
-        .unwrap();
-    Action::from(act.call(&mut player.store, ()).unwrap())
+        .get_typed_func::<(), u32, _>(&mut player.store, "__act")?;
+    Ok(Action::from(act.call(&mut player.store, ())?))
 }
