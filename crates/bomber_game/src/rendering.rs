@@ -1,29 +1,29 @@
 use bevy::prelude::*;
 use bomber_lib::world::Tile;
 
-use crate::labyrinth::{Labyrinth, Location};
+use crate::game_map::{GameMap, Location};
 
 pub const TILE_WIDTH_PX: f32 = 50.0;
-pub const LABYRINTH_Z: f32 = 0.0;
+pub const GAME_MAP_Z: f32 = 0.0;
 
 impl Location {
-    pub fn as_pixels(&self, labyrinth: &Labyrinth, z: f32) -> Vec3 {
-        let (width, height) = labyrinth.size();
-        let labyrinth_offset = Vec2::new(
+    pub fn as_pixels(&self, game_map: &GameMap, z: f32) -> Vec3 {
+        let (width, height) = game_map.size();
+        let game_map_offset = Vec2::new(
             -(TILE_WIDTH_PX / 2.0) * width as f32,
             -(TILE_WIDTH_PX / 2.0) * height as f32,
         );
         Vec3::new(
-            labyrinth_offset.x + (self.0 as f32) * TILE_WIDTH_PX,
-            labyrinth_offset.y + (self.1 as f32) * TILE_WIDTH_PX,
+            game_map_offset.x + (self.0 as f32) * TILE_WIDTH_PX,
+            game_map_offset.y + (self.1 as f32) * TILE_WIDTH_PX,
             z,
         )
     }
 }
 
-pub fn draw_labyrinth(
+pub fn draw_game_map(
     commands: &mut Commands,
-    labyrinth: &Labyrinth,
+    game_map: &GameMap,
     materials: &mut Assets<ColorMaterial>,
 ) {
     let (floor, wall, lava, switch) = (
@@ -32,11 +32,10 @@ pub fn draw_labyrinth(
         materials.add(Color::RED.into()),
         materials.add(Color::BLUE.into()),
     );
-    let (width, height) = labyrinth.size();
-    println!("Labyrinth size is {}, {}", width, height);
+    let (width, height) = game_map.size();
     for i in 0..width {
         for j in 0..height {
-            let material = match labyrinth.tile(Location(i, j)) {
+            let material = match game_map.tile(Location(i, j)) {
                 Some(Tile::Wall) => &wall,
                 Some(Tile::EmptyFloor) => &floor,
                 Some(Tile::Lava) => &lava,
@@ -44,15 +43,15 @@ pub fn draw_labyrinth(
                 None => panic!("Expected tile at ({},{})", i, j),
             };
 
-            let labyrinth_offset = Vec2::new(
+            let game_map_offset = Vec2::new(
                 -(TILE_WIDTH_PX / 2.0) * width as f32,
                 -(TILE_WIDTH_PX / 2.0) * height as f32,
             );
             let tile_size = Vec2::splat(TILE_WIDTH_PX);
             let tile_position = Vec3::new(
-                labyrinth_offset.x + (i as f32) * TILE_WIDTH_PX,
-                labyrinth_offset.y + (j as f32) * TILE_WIDTH_PX,
-                LABYRINTH_Z,
+                game_map_offset.x + (i as f32) * TILE_WIDTH_PX,
+                game_map_offset.y + (j as f32) * TILE_WIDTH_PX,
+                GAME_MAP_Z,
             );
 
             commands.spawn_bundle(SpriteBundle {

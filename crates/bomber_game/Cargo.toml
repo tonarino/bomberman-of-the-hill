@@ -6,9 +6,9 @@ edition = "2018"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-wasmtime = "*"
+wasmtime = "0.30"
 bevy = "0.5"
-anyhow = "*"
+anyhow = "1"
 
 [dependencies.bomber_lib]
 path = "../bomber_lib"

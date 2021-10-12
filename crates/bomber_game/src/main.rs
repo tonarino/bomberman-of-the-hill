@@ -1,20 +1,21 @@
+use anyhow::Result;
 use bevy::prelude::*;
 use player_hotswap::PlayerHotswapPlugin;
-use std::sync::Arc;
+use std::{str::FromStr, sync::Arc};
 
+use game_map::GameMap;
 use player_behaviour::PlayerBehaviourPlugin;
-use labyrinth::Labyrinth;
-use rendering::draw_labyrinth;
+use rendering::draw_game_map;
 
+mod game_map;
 mod player_behaviour;
 mod player_hotswap;
-mod labyrinth;
 mod rendering;
 
-fn main() {
-    let labyrinth = Labyrinth::from(labyrinth::DANGEROUS);
+fn main() -> Result<()> {
+    let game_map = GameMap::from_str(game_map::DANGEROUS)?;
     App::build()
-        .insert_resource(Arc::new(labyrinth))
+        .insert_resource(Arc::new(game_map))
         .add_plugins_with(DefaultPlugins, |group| {
             group.disable::<bevy::audio::AudioPlugin>()
         })
@@ -22,16 +23,24 @@ fn main() {
         .add_plugin(PlayerHotswapPlugin)
         .add_startup_system(setup.system())
         .run();
+    Ok(())
 }
 
 fn setup(
     mut commands: Commands,
     mut materials: ResMut<Assets<ColorMaterial>>,
-    labyrinth: Res<Arc<Labyrinth>>,
+    game_map: Res<Arc<GameMap>>,
 ) {
     commands.spawn_bundle(OrthographicCameraBundle::new_2d());
     commands.spawn_bundle(UiCameraBundle::default());
-    draw_labyrinth(&mut commands, &labyrinth, &mut materials);
+    draw_game_map(&mut commands, &game_map, &mut materials);
+}
+
+/// Logs recoverable system errors (to be used at the end of an erroring system chain)
+fn error_sink(In(result): In<Result<()>>) {
+    if let Err(e) = result {
+        error!("Unhandled error {}", e);
+    }
 }
 
 // General purpose newtype

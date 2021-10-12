@@ -2,6 +2,9 @@ use proc_macro::TokenStream;
 use quote::quote;
 use syn::{parse_macro_input, ItemStruct};
 
+/// When applied to a custom struct that implements the `Player` trait, exposes
+/// a set of `wasm` friendly imports and exports, allowing the compiled crate
+/// to be used as a player.
 #[proc_macro_attribute]
 pub fn wasm_player(_: TokenStream, input: TokenStream) -> TokenStream {
     let player_struct = parse_macro_input!(input as ItemStruct);
