@@ -1,5 +1,4 @@
-use std::str::FromStr;
-use std::{convert::TryFrom, ops::Add};
+use std::{convert::TryFrom, ops::Add, str::FromStr};
 
 use anyhow::{anyhow, Result};
 use bomber_lib::world::{Direction, Tile};
@@ -62,19 +61,14 @@ impl GameMap {
     }
 
     pub fn tile(&self, location: Location) -> Option<Tile> {
-        self.tiles
-            .get(location.1)
-            .and_then(|v| v.get(location.0))
-            .cloned()
+        self.tiles.get(location.1).and_then(|v| v.get(location.0)).cloned()
     }
 
     /// When inspecting, out of bound tiles are considered to be walls. This simplifies
     /// the Wasm API for now, but it should probably be replaced as this matures (otherwise
     /// we're treating the wall as a sentinel value, and we can do better in Rust...)
     pub fn inspect_from(&self, location: Location, direction: Direction) -> Tile {
-        (location + direction)
-            .and_then(|p| self.tile(p))
-            .unwrap_or(Tile::Wall)
+        (location + direction).and_then(|p| self.tile(p)).unwrap_or(Tile::Wall)
     }
 }
 
@@ -103,9 +97,7 @@ impl FromStr for GameMap {
             Err(anyhow!("Game map must have at least a row and a column"))
         } else {
             let convert_line = |l: &str| -> Result<Vec<Tile>> {
-                l.chars()
-                    .map(|c| Wrapper::<Tile>::try_from(c).map(|w| w.0))
-                    .collect()
+                l.chars().map(|c| Wrapper::<Tile>::try_from(c).map(|w| w.0)).collect()
             };
             let tiles: Result<Vec<Vec<Tile>>> = lines.into_iter().map(convert_line).collect();
             Ok(Self { tiles: tiles? })

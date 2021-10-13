@@ -28,16 +28,12 @@ impl From<u32> for Action {
 
 impl From<u32> for Tile {
     fn from(raw: u32) -> Self {
-        Self::iter()
-            .nth(raw as usize)
-            .expect("Invalid raw tile index")
+        Self::iter().nth(raw as usize).expect("Invalid raw tile index")
     }
 }
 
 impl From<u32> for Direction {
     fn from(raw: u32) -> Self {
-        Self::iter()
-            .nth(raw as usize)
-            .expect("Invalid raw direction index")
+        Self::iter().nth(raw as usize).expect("Invalid raw direction index")
     }
 }
