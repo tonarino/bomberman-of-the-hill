@@ -40,9 +40,7 @@ impl AssetLoader for WasmPlayerLoader {
         load_context: &'a mut LoadContext,
     ) -> BoxedFuture<'a, Result<(), anyhow::Error>> {
         Box::pin(async move {
-            let wasm_player_asset = WasmPlayerAsset {
-                bytes: bytes.into(),
-            };
+            let wasm_player_asset = WasmPlayerAsset { bytes: bytes.into() };
             load_context.set_default_asset(LoadedAsset::new(wasm_player_asset));
             Ok(())
         })

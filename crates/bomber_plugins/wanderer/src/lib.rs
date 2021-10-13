@@ -18,10 +18,9 @@ struct Wanderer {
 
 impl Player for Wanderer {
     fn spawn() -> Self {
-        Self {
-            preferred_direction: Direction::North,
-        }
+        Self { preferred_direction: Direction::North }
     }
+
     fn act(&mut self, world: &impl World) -> Action {
         // A wanderer walks to their preferred direction if it's free.
         // If it isn't, they  walk to the first free tile they inspect.
@@ -29,10 +28,7 @@ impl Player for Wanderer {
         if tile_is_free(&self.preferred_direction) {
             Action::Move(self.preferred_direction)
         } else {
-            Direction::iter()
-                .find(tile_is_free)
-                .map(Action::Move)
-                .unwrap_or(Action::StayStill)
+            Direction::iter().find(tile_is_free).map(Action::Move).unwrap_or(Action::StayStill)
         }
     }
 }

@@ -19,6 +19,7 @@ impl Player for Fool {
     fn spawn() -> Self {
         Self { choice: 0 }
     }
+
     fn act(&mut self, world: &impl World) -> Action {
         // A fool just ignores the world and travels north! Or somewhere
         // close to north! What's the worst that could happen?

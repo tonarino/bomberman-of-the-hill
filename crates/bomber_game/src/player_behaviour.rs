@@ -50,10 +50,7 @@ impl Plugin for PlayerBehaviourPlugin {
 }
 
 fn setup(mut commands: Commands) {
-    commands
-        .spawn()
-        .insert(Timer::from_seconds(1.0, true))
-        .insert(PlayerTimer);
+    commands.spawn().insert(Timer::from_seconds(1.0, true)).insert(PlayerTimer);
 }
 
 /// Ensures the number of active live players matches the `.wasm` files under `assets/players`
@@ -77,10 +74,7 @@ fn player_spawn_system(
     }
     // Spawn all missing players (if the wasm file was just loaded)
     for handle in handles.0.iter() {
-        if players
-            .iter()
-            .all(|(_, player)| player.handle.id != handle.id)
-        {
+        if players.iter().all(|(_, player)| player.handle.id != handle.id) {
             spawn_player(
                 handle.clone(),
                 &game_map,
@@ -107,10 +101,7 @@ fn spawn_player(
     commands: &mut Commands,
     materials: &mut Assets<ColorMaterial>,
 ) -> Result<(), anyhow::Error> {
-    let data = PlayerStoreData {
-        location: INITIAL_LOCATION,
-        game_map: game_map.clone(),
-    };
+    let data = PlayerStoreData { location: INITIAL_LOCATION, game_map: game_map.clone() };
 
     // The Store owns all player-adjacent data, whether it's internal to the wasm module
     // or simply associated to the player (e.g. their position in the map)
@@ -120,16 +111,13 @@ fn spawn_player(
     // implication here; a player may call this function at any time. Currently it only requires
     // shared immutable access through an `Arc`, but if the need arises for mutable access we'll
     // have to worry about metering and avoiding potential deadlocks.
-    let player_inspect_wasm_import = Func::wrap(
-        &mut store,
-        |caller: Caller<'_, PlayerStoreData>, direction_raw: u32| -> u32 {
+    let player_inspect_wasm_import =
+        Func::wrap(&mut store, |caller: Caller<'_, PlayerStoreData>, direction_raw: u32| -> u32 {
             // Through the `caller` struct, the `wasm` instance is able to
             // access game state by retrieving a `PlayerStoreData` object.
             let data = caller.data();
-            data.game_map
-                .inspect_from(data.location, direction_raw.into()) as u32
-        },
-    );
+            data.game_map.inspect_from(data.location, direction_raw.into()) as u32
+        });
 
     let wasm_bytes = assets
         .get(&handle)
@@ -142,24 +130,16 @@ fn spawn_player(
     let imports = &[player_inspect_wasm_import.into()];
     // Here the module is bound to a store and a set of imports to form a stateful instance.
     let instance = wasmtime::Instance::new(&mut store, &module, imports)?;
-    let player = Player {
-        store,
-        instance,
-        handle,
-    };
+    let player = Player { store, instance, handle };
     let texture_handle = asset_server.load("graphics/player.png");
-    commands
-        .spawn()
-        .insert(player)
-        .insert(module)
-        .insert_bundle(SpriteBundle {
-            material: materials.add(texture_handle.into()),
-            transform: Transform::from_translation(
-                INITIAL_LOCATION.as_pixels(game_map, GAME_MAP_Z + 1.0),
-            ),
-            sprite: Sprite::new(Vec2::splat(TILE_WIDTH_PX)),
-            ..Default::default()
-        });
+    commands.spawn().insert(player).insert(module).insert_bundle(SpriteBundle {
+        material: materials.add(texture_handle.into()),
+        transform: Transform::from_translation(
+            INITIAL_LOCATION.as_pixels(game_map, GAME_MAP_Z + 1.0),
+        ),
+        sprite: Sprite::new(Vec2::splat(TILE_WIDTH_PX)),
+        ..Default::default()
+    });
     Ok(())
 }
 
@@ -170,11 +150,7 @@ fn player_positioning_system(
     mut players: Query<(&mut Transform, &Player)>,
 ) {
     for (mut transform, player) in players.iter_mut() {
-        transform.translation = player
-            .store
-            .data()
-            .location
-            .as_pixels(&game_map, GAME_MAP_Z + 1.0);
+        transform.translation = player.store.data().location.as_pixels(&game_map, GAME_MAP_Z + 1.0);
     }
 }
 
@@ -221,58 +197,32 @@ fn apply_action(
     let new_location = match action {
         Action::Move(direction) => {
             (player.store.data().location + direction).unwrap_or(player.store.data().location)
-        }
+        },
         Action::StayStill => player.store.data().location,
     };
 
     match game_map.tile(new_location) {
         Some(bomber_lib::world::Tile::Wall) => {
-            info!(
-                "A player ({:?}) bumps into a wall at {:?}.",
-                player_entity, new_location
-            )
-        }
+            info!("A player ({:?}) bumps into a wall at {:?}.", player_entity, new_location)
+        },
         Some(bomber_lib::world::Tile::EmptyFloor) => {
-            info!(
-                "A player ({:?}) walks into {:?}",
-                player_entity, new_location
-            );
+            info!("A player ({:?}) walks into {:?}", player_entity, new_location);
             player.store.data_mut().location = new_location;
-        }
+        },
         Some(bomber_lib::world::Tile::Switch) => {
-            info!(
-                "A player ({:?}) presses a switch at {:?}",
-                player_entity, new_location
-            )
-        }
+            info!("A player ({:?}) presses a switch at {:?}", player_entity, new_location)
+        },
         Some(bomber_lib::world::Tile::Lava) => {
-            info!(
-                "A player ({:?}) dissolves in lava at {:?}",
-                player_entity, new_location
-            );
-            kill_player(
-                commands,
-                asset_server,
-                materials,
-                player_entity,
-                new_location,
-                game_map,
-            );
-        }
+            info!("A player ({:?}) dissolves in lava at {:?}", player_entity, new_location);
+            kill_player(commands, asset_server, materials, player_entity, new_location, game_map);
+        },
         None => {
             info!(
                 "A player ({:?}) somehow walks into the void at {:?}...",
                 player_entity, new_location
             );
-            kill_player(
-                commands,
-                asset_server,
-                materials,
-                player_entity,
-                new_location,
-                game_map,
-            );
-        }
+            kill_player(commands, asset_server, materials, player_entity, new_location, game_map);
+        },
     };
 }
 
@@ -315,8 +265,6 @@ fn death_marker_cleanup_system(
 
 /// Executes the `.wasm` export to get the player's decision given its current surroundings.
 fn wasm_player_action(player: &mut Player) -> Result<Action> {
-    let act = player
-        .instance
-        .get_typed_func::<(), u32, _>(&mut player.store, "__act")?;
+    let act = player.instance.get_typed_func::<(), u32, _>(&mut player.store, "__act")?;
     Ok(Action::from(act.call(&mut player.store, ())?))
 }
