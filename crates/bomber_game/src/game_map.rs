@@ -99,7 +99,7 @@ impl FromStr for GameMap {
         let lines: Vec<&str> = text.lines().rev().collect();
         if lines.windows(2).any(|w| w[0].len() != w[1].len()) {
             Err(anyhow!("Mismatched row sizes in the game map"))
-        } else if lines.len() == 0 || lines[0].len() == 0 {
+        } else if lines.is_empty() || lines[0].is_empty() {
             Err(anyhow!("Game map must have at least a row and a column"))
         } else {
             let convert_line = |l: &str| -> Result<Vec<Tile>> {

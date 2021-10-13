@@ -30,8 +30,7 @@ impl Player for Wanderer {
             Action::Move(self.preferred_direction)
         } else {
             Direction::iter()
-                .filter(tile_is_free)
-                .next()
+                .find(tile_is_free)
                 .map(Action::Move)
                 .unwrap_or(Action::StayStill)
         }

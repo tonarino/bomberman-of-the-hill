@@ -1,4 +1,3 @@
-#![feature(bool_to_option)]
 pub mod wasm_helpers;
 pub mod world;
 
