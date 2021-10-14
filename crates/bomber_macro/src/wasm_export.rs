@@ -33,6 +33,9 @@ pub fn implementation(input: TokenStream) -> TokenStream {
         #[no_mangle]
         static __WASM_INPUT_BUFFER: [u8; #INPUT_BUFFER_SIZE_BYTES] = [0u8; 10_000];
 
+        #[derive(bomber_lib::Serialize, bomber_lib::Deserialize)]
+        struct __WasmOutputLocator { address: i32, size: u32 }
+
         #[no_mangle]
         fn __wasm_get_input_buffer_address() -> i32 { __WASM_INPUT_BUFFER.as_ptr() as _ }
         fn __wasm_get_input_buffer_size() -> u32 { #INPUT_BUFFER_SIZE_BYTES as _ }
@@ -42,7 +45,7 @@ pub fn implementation(input: TokenStream) -> TokenStream {
         expanded.extend(build_shim(method, implementer));
     }
 
-    proc_macro::TokenStream::from(expanded)
+    TokenStream::from(expanded)
 }
 
 fn build_shim(method: &ImplItemMethod, implementer: &Type) -> TokenStream {
@@ -75,11 +78,17 @@ fn build_shim(method: &ImplItemMethod, implementer: &Type) -> TokenStream {
                 #inner_invocation
                 let serialized_output = bomber_lib::bincode::serialize(&output).expect("Failed to serialize output");
                 let output_size = serialized_output.len();
-                // return the address of a tuple that contains the pointer and offset
-                // of the actual desired output. This is important as the tuple has a known
-                // size, allowing the caller to deserialize it directly.
-                let output_locator = (serialized_output.as_ptr() as i32, output_size as u32);
-                &output_locator as *const _ as i32
+                // return the address of a locator struct contains the pointer and offset
+                // of the actual desired output. This is important as the locator has a known
+                // size, allowing the caller to deserialize it directly. This allows all
+                // output information to be returned in a single i32 variable.
+                let output_locator = __WasmOutputLocator {
+                    address: serialized_output.as_ptr() as i32,
+                    size: output_size as u32
+                };
+                let serialized_output_locator = bomber_lib::bincode::serialize(&output_locator)
+                    .expect("Failed to serialize output locator");
+                &serialized_output_locator as *const _ as i32
             }
         }
     } else {
@@ -161,5 +170,5 @@ fn inner_invocation(
             let output = #implementer::#method_identifier(#(#argument_identifiers),*);
         },
     };
-    inner_invocation
+    inner_invocation.into()
 }
