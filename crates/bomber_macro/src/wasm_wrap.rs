@@ -15,10 +15,6 @@ pub fn implementation(input: TokenStream) -> TokenStream {
 
     let expanded = quote! {
         #trait_block
-
-        #[derive(::serde::Serialize, ::serde::Deserialize)]
-        pub struct __WasmOutputLocator { pub address: i32, pub size: u32 }
-
         #(#wrappers)*
     };
 

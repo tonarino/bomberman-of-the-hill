@@ -17,6 +17,8 @@ impl Default for Wanderer {
     }
 }
 
+/// The `Player` implementation block must be decorated with `wasm_export`
+/// in order to export the right shims to interface with the bevy `wasm` runtime
 #[wasm_export]
 impl Player for Wanderer {
     fn act(

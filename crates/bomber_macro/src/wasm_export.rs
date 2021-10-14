@@ -12,7 +12,6 @@ pub fn implementation(input: TokenStream) -> TokenStream {
         .iter()
         .filter_map(|i| if let ImplItem::Method(m) = i { Some(m) } else { None })
         .collect();
-
     let implementer = &trait_impl_block.self_ty;
 
     let mut expanded = proc_macro::TokenStream::from(quote! {
