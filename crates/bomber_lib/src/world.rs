@@ -1,8 +1,7 @@
 use std::convert::TryFrom;
-use anyhow::{anyhow, Error};
 
+use serde::{Deserialize, Serialize};
 use strum_macros::EnumIter;
-use serde::{Serialize, Deserialize};
 
 pub trait World {
     fn inspect(&self, direction: Direction) -> Tile;
@@ -28,9 +27,9 @@ pub enum Tile {
 /// to tell the player where tiles are respective to them, without leaking the
 /// map layout).
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
-pub struct RelativePosition(pub i32, pub i32);
+pub struct Distance(pub i32, pub i32);
 
-impl RelativePosition {
+impl Distance {
     /// Whether the position represents a tile adjacent to the origin.
     pub fn adjacent(&self) -> bool {
         self.0.abs() <= 1 && self.1.abs() <= 1
@@ -43,39 +42,40 @@ impl RelativePosition {
     }
 }
 
-impl std::ops::Add for RelativePosition {
+impl std::ops::Add for Distance {
     type Output = Self;
 
     fn add(self, rhs: Self) -> Self::Output {
-        Self (self.0 + rhs.0, self.1 + rhs.1)
+        Self(self.0 + rhs.0, self.1 + rhs.1)
     }
 }
 
 impl<T: Into<i32>> std::ops::Mul<T> for Direction {
-    type Output = RelativePosition;
+    type Output = Distance;
 
     fn mul(self, rhs: T) -> Self::Output {
         let distance = rhs.into();
         match self {
-            Direction::West => RelativePosition(-distance, 0),
-            Direction::North => RelativePosition(0, distance),
-            Direction::East => RelativePosition(distance, 0),
-            Direction::South => RelativePosition(0, -distance),
+            Direction::West => Distance(-distance, 0),
+            Direction::North => Distance(0, distance),
+            Direction::East => Distance(distance, 0),
+            Direction::South => Distance(0, -distance),
         }
     }
 }
 
 /// Quality of life conversion for the player to simplify their navigation logic.
-impl TryFrom<RelativePosition> for Direction {
-    type Error = Error;
+impl TryFrom<Distance> for Direction {
+    // TODO proper error return
+    type Error = ();
 
-    fn try_from(p: RelativePosition) -> Result<Self, Self::Error> {
+    fn try_from(p: Distance) -> Result<Self, ()> {
         match p {
-            RelativePosition(x, 0) if x > 0 => Ok(Direction::East),
-            RelativePosition(x, 0) if x < 0 => Ok(Direction::West),
-            RelativePosition(0, y) if y > 0 => Ok(Direction::North),
-            RelativePosition(0, y) if y < 0 => Ok(Direction::South),
-            _ => Err(anyhow!("Relative Position does not correspond to an orthogonal direction")),
+            Distance(x, 0) if x > 0 => Ok(Direction::East),
+            Distance(x, 0) if x < 0 => Ok(Direction::West),
+            Distance(0, y) if y > 0 => Ok(Direction::North),
+            Distance(0, y) if y < 0 => Ok(Direction::South),
+            _ => Err(()),
         }
     }
 }

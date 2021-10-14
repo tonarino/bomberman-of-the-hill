@@ -1,19 +1,22 @@
 use proc_macro::TokenStream;
 use quote::{format_ident, quote};
-use syn::{ItemTrait, Pat, ReturnType, TraitItem, parse_macro_input};
+use syn::{parse_macro_input, ItemTrait, Pat, ReturnType, TraitItem};
 
 pub fn implementation(input: TokenStream) -> TokenStream {
     let trait_block = parse_macro_input!(input as ItemTrait);
 
-    let methods: Vec<_> = trait_block.items.iter().filter_map(|i| {
-        if let TraitItem::Method(m) = i { Some(m) } else { None }
-    }).collect();
+    let methods: Vec<_> = trait_block
+        .items
+        .iter()
+        .filter_map(|i| if let TraitItem::Method(m) = i { Some(m) } else { None })
+        .collect();
 
     let wrappers = methods.iter().map(|m| build_wasm_wrapper(m));
 
     let expanded = quote! {
         #trait_block
 
+        #[cfg(not(target_family = "wasm"))]
         #[derive(::serde::Serialize, ::serde::Deserialize)]
         struct __WasmOutputLocator { address: i32, size: u32 }
 
@@ -28,28 +31,35 @@ fn build_wasm_wrapper(method: &syn::TraitItemMethod) -> quote::__private::TokenS
     let shim_identifier = format!("__wasm_{}", method.sig.ident.clone());
 
     // We can only work with non-self arguments represented by an identifier
-    let valid_inputs: Vec<_> = method.sig.inputs
+    let valid_inputs: Vec<_> = method
+        .sig
+        .inputs
         .iter()
         .filter(|i| match i {
-            syn::FnArg::Typed(t) if matches!(&*t.pat, Pat::Ident(_))=> true,
+            syn::FnArg::Typed(t) if matches!(&*t.pat, Pat::Ident(_)) => true,
             _ => false,
         })
         .collect();
 
-    let input_patterns: Vec<_> = valid_inputs.iter().filter_map(|i| {
-        if let syn::FnArg::Typed(t) = i {
-            if let Pat::Ident(id) = &*t.pat {
-                Some(id)
+    let input_patterns: Vec<_> = valid_inputs
+        .iter()
+        .filter_map(|i| {
+            if let syn::FnArg::Typed(t) = i {
+                if let Pat::Ident(id) = &*t.pat {
+                    Some(id)
+                } else {
+                    None
+                }
             } else {
                 None
             }
-        } else {
-            None
-        }
-    }).collect();
+        })
+        .collect();
 
-    let shim_input_addresses: Vec<_> = input_patterns.iter().map(|p| format_ident!("{}_address", p.ident)).collect();
-    let shim_input_lengths: Vec<_> = input_patterns.iter().map(|p| format_ident!("{}_length", p.ident)).collect();
+    let shim_input_addresses: Vec<_> =
+        input_patterns.iter().map(|p| format_ident!("{}_address", p.ident)).collect();
+    let shim_input_lengths: Vec<_> =
+        input_patterns.iter().map(|p| format_ident!("{}_length", p.ident)).collect();
     let shim_input_types = (0..valid_inputs.len() * 2).map(|_| format_ident!("i32"));
 
     let shim_output_type = if matches!(method.sig.output, ReturnType::Type(..)) {
@@ -79,6 +89,7 @@ fn build_wasm_wrapper(method: &syn::TraitItemMethod) -> quote::__private::TokenS
 
     let expanded = if let ReturnType::Type(_, ref output) = method.sig.output {
         quote! {
+            #[cfg(not(target_family = "wasm"))]
             pub fn #wrapper_identifier(
                 store: &mut ::wasmtime::Store<()>,
                 instance: & ::wasmtime::Instance,
@@ -96,6 +107,7 @@ fn build_wasm_wrapper(method: &syn::TraitItemMethod) -> quote::__private::TokenS
         }
     } else {
         quote! {
+            #[cfg(not(target_family = "wasm"))]
             pub fn #wrapper_identifier(
                 store: &mut ::wasmtime::Store<()>,
                 instance: & ::wasmtime::Instance,

@@ -1,7 +1,11 @@
-use std::{convert::TryFrom, ops::Add, str::FromStr};
+use std::{
+    convert::TryFrom,
+    ops::{Add, Sub},
+    str::FromStr,
+};
 
 use anyhow::{anyhow, Result};
-use bomber_lib::world::{Direction, Tile};
+use bomber_lib::world::{Direction, Distance, Tile};
 
 use crate::Wrapper;
 
@@ -33,6 +37,17 @@ pub struct GameMap {
     tiles: Vec<Vec<Tile>>,
 }
 
+impl GameMap {
+    pub fn tiles_surrounding_location(&self, location: Location) -> Vec<(Tile, Distance)> {
+        (-1..=1)
+            .zip(-1..=1)
+            .filter_map(|(x, y)| {
+                self.tile(location + (x, y)).and_then(|t| Some((t, Distance(x, y))))
+            })
+            .collect()
+    }
+}
+
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub struct Location(pub usize, pub usize);
 
@@ -41,13 +56,29 @@ impl Add<Direction> for Location {
 
     fn add(self, rhs: Direction) -> Self::Output {
         match rhs {
-            Direction::West  if self.0 == 0 => None,
+            Direction::West if self.0 == 0 => None,
             Direction::South if self.1 == 0 => None,
             Direction::West => Some(Location(self.0 - 1, self.1)),
             Direction::North => Some(Location(self.0, self.1 + 1)),
             Direction::East => Some(Location(self.0 + 1, self.1)),
             Direction::South => Some(Location(self.0, self.1 - 1)),
         }
+    }
+}
+
+impl Add<(i32, i32)> for Location {
+    type Output = Location;
+
+    fn add(self, rhs: (i32, i32)) -> Self::Output {
+        Self((self.0 as i32 + rhs.0).max(0) as usize, (self.1 as i32 + rhs.1).max(0) as usize)
+    }
+}
+
+impl Sub<Location> for Location {
+    type Output = Distance;
+
+    fn sub(self, rhs: Location) -> Self::Output {
+        Distance(self.0 as i32 - rhs.0 as i32, self.1 as i32 - rhs.1 as i32)
     }
 }
 

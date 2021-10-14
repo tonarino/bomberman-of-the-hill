@@ -10,13 +10,7 @@ pub fn implementation(input: TokenStream) -> TokenStream {
     let methods: Vec<_> = trait_impl_block
         .items
         .iter()
-        .filter_map(|i| {
-            if let ImplItem::Method(m) = i {
-                Some(m)
-            } else {
-                None
-            }
-        })
+        .filter_map(|i| if let ImplItem::Method(m) = i { Some(m) } else { None })
         .collect();
 
     let implementer = &trait_impl_block.self_ty;
@@ -115,38 +109,21 @@ fn reflect_on_signature(
         })
         .collect();
     let indices = 0..non_self_input_types.len();
-    let argument_identifiers: Vec<_> = indices
-        .clone()
-        .map(|i| format_ident!("reconstructed_argument_{}", i))
-        .collect();
-    let pointer_identifiers: Vec<_> = indices
-        .clone()
-        .map(|i| format_ident!("argument_pointer_{}", i))
-        .collect();
-    let length_identifiers: Vec<_> = indices
-        .clone()
-        .map(|i| format_ident!("argument_length_{}", i))
-        .collect();
-    let slice_identifiers = indices
-        .clone()
-        .map(|i| format_ident!("argument_slice_{}", i))
-        .collect();
-    (
-        argument_identifiers,
-        pointer_identifiers,
-        length_identifiers,
-        slice_identifiers,
-    )
+    let argument_identifiers: Vec<_> =
+        indices.clone().map(|i| format_ident!("reconstructed_argument_{}", i)).collect();
+    let pointer_identifiers: Vec<_> =
+        indices.clone().map(|i| format_ident!("argument_pointer_{}", i)).collect();
+    let length_identifiers: Vec<_> =
+        indices.clone().map(|i| format_ident!("argument_length_{}", i)).collect();
+    let slice_identifiers =
+        indices.clone().map(|i| format_ident!("argument_slice_{}", i)).collect();
+    (argument_identifiers, pointer_identifiers, length_identifiers, slice_identifiers)
 }
 
 fn reflect_on_method(method: &ImplItemMethod) -> (Ident, Ident, bool, bool) {
     let method_identifier = method.sig.ident.clone();
     let shim_identifier = format_ident!("__wasm_shim_{}", method.sig.ident);
-    let takes_self = method
-        .sig
-        .inputs
-        .iter()
-        .any(|i| matches!(i, syn::FnArg::Receiver(_)));
+    let takes_self = method.sig.inputs.iter().any(|i| matches!(i, syn::FnArg::Receiver(_)));
     let has_output = matches!(method.sig.output, ReturnType::Type(..));
     (method_identifier, shim_identifier, takes_self, has_output)
 }
@@ -161,7 +138,7 @@ fn inner_invocation(
     let inner_invocation = match (takes_self, has_output) {
         (true, false) => {
             quote! { __WASM_SINGLETON.lock().unwrap().#method_identifier(#(#argument_identifiers),*); }
-        }
+        },
         (false, false) => quote! { #implementer::#method_identifier(#(#argument_identifiers),*); },
         (true, true) => quote! {
             let output = __WASM_SINGLETON.lock().unwrap().#method_identifier(#(#argument_identifiers),*);

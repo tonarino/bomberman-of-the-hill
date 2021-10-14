@@ -27,7 +27,7 @@ fn main() -> Result<()> {
 fn setup(
     mut commands: Commands,
     mut materials: ResMut<Assets<ColorMaterial>>,
-    game_map: Res<Arc<GameMap>>,
+    game_map: Res<GameMap>,
 ) {
     commands.spawn_bundle(OrthographicCameraBundle::new_2d());
     commands.spawn_bundle(UiCameraBundle::default());

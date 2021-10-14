@@ -1,18 +1,22 @@
 pub mod world;
 
-use world::{Direction, RelativePosition, Tile};
 use bomber_macro::wasm_wrap;
+#[cfg(not(target_family = "wasm"))]
 use wasmtime::AsContextMut;
 
+use world::{Direction, Distance, Tile};
+
 // Reexports for quality of life when using the wasm macros
-pub use serde::{Serialize, Deserialize};
-pub use bincode;
-pub use wasmtime;
+#[cfg(not(target_family = "wasm"))]
 pub use anyhow;
+pub use bincode;
+pub use serde::{Deserialize, Serialize};
+#[cfg(not(target_family = "wasm"))]
+pub use wasmtime;
 
 #[wasm_wrap]
 pub trait Player: Default {
-    fn act(&mut self, surroundings: Vec<(Tile, RelativePosition)>, last_result: LastTurnResult) -> Action;
+    fn act(&mut self, surroundings: Vec<(Tile, Distance)>, last_result: LastTurnResult) -> Action;
     fn name(&self) -> String;
 }
 
@@ -27,4 +31,5 @@ pub enum LastTurnResult {
     Moved(Direction),
     ActionFailed,
     Died,
+    StoodStill,
 }
