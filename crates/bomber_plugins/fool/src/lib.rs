@@ -23,4 +23,3 @@ impl Player for Fool {
         "Mr North".into()
     }
 }
-

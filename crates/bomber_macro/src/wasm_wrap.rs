@@ -30,10 +30,7 @@ fn build_wasm_wrapper(method: &syn::TraitItemMethod) -> quote::__private::TokenS
         .sig
         .inputs
         .iter()
-        .filter(|i| match i {
-            syn::FnArg::Typed(t) if matches!(&*t.pat, Pat::Ident(_)) => true,
-            _ => false,
-        })
+        .filter(|i| matches!(i, syn::FnArg::Typed(t) if matches!(&*t.pat, Pat::Ident(_))))
         .collect();
 
     let input_patterns: Vec<_> = valid_inputs

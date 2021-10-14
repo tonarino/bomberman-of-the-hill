@@ -28,8 +28,10 @@ impl Player for Wanderer {
     ) -> Action {
         // A wanderer walks to their preferred direction if it's free.
         // If it isn't, they  walk to the first free tile they inspect.
-        let preferred_tile =
-            surroundings.iter().find_map(|(t, p)| (*p == self.preferred_direction * 1).then(|| t));
+        #[allow(clippy::identity_op)]
+        let preferred_tile = surroundings
+            .iter()
+            .find_map(|(t, p)| (*p == (self.preferred_direction * 1)).then(|| t));
         if matches!(preferred_tile, Some(Tile::EmptyFloor)) {
             Action::Move(Direction::North)
         } else {

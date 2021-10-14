@@ -35,7 +35,7 @@ pub fn implementation(input: TokenStream) -> TokenStream {
         expanded.extend(build_shim(method, implementer));
     }
 
-    TokenStream::from(expanded)
+    expanded
 }
 
 fn build_shim(method: &ImplItemMethod, implementer: &Type) -> TokenStream {
@@ -87,22 +87,18 @@ fn reflect_on_signature(
     method: &ImplItemMethod,
 ) -> (Vec<Ident>, Vec<Ident>, Vec<Ident>, Vec<Ident>) {
     let inputs: Vec<_> = method.sig.inputs.iter().collect();
-    let non_self_input_types: Vec<_> = inputs
-        .iter()
-        .filter_map(|i| match i {
-            syn::FnArg::Typed(t) => Some(t),
-            _ => None,
-        })
-        .collect();
-    let indices = 0..non_self_input_types.len();
+    let non_self_input_types = inputs.iter().filter_map(|i| match i {
+        syn::FnArg::Typed(t) => Some(t),
+        _ => None,
+    });
+    let indices = 0..non_self_input_types.count();
     let argument_identifiers: Vec<_> =
         indices.clone().map(|i| format_ident!("reconstructed_argument_{}", i)).collect();
     let pointer_identifiers: Vec<_> =
         indices.clone().map(|i| format_ident!("argument_pointer_{}", i)).collect();
     let length_identifiers: Vec<_> =
         indices.clone().map(|i| format_ident!("argument_length_{}", i)).collect();
-    let slice_identifiers =
-        indices.clone().map(|i| format_ident!("argument_slice_{}", i)).collect();
+    let slice_identifiers = indices.map(|i| format_ident!("argument_slice_{}", i)).collect();
     (argument_identifiers, pointer_identifiers, length_identifiers, slice_identifiers)
 }
 
@@ -121,7 +117,7 @@ fn inner_invocation(
     argument_identifiers: impl Iterator<Item = Ident>,
     implementer: &Type,
 ) -> quote::__private::TokenStream {
-    let inner_invocation = match (takes_self, has_output) {
+    match (takes_self, has_output) {
         (true, false) => {
             quote! { __WASM_SINGLETON.lock().unwrap().#method_identifier(#(#argument_identifiers),*); }
         },
@@ -132,6 +128,5 @@ fn inner_invocation(
         (false, true) => quote! {
             let output = #implementer::#method_identifier(#(#argument_identifiers),*);
         },
-    };
-    inner_invocation.into()
+    }
 }

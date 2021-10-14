@@ -3,7 +3,7 @@
 
 use anyhow::{anyhow, Result};
 use bevy::prelude::*;
-use bomber_lib::{Action, LastTurnResult, wasm_act, wasm_name};
+use bomber_lib::{wasm_act, wasm_name, Action, LastTurnResult};
 use wasmtime::Store;
 
 use crate::{
@@ -149,7 +149,7 @@ fn player_movement_system(
     let mut timer = timer_query.single_mut().unwrap();
     if timer.tick(time.delta()).just_finished() {
         for (entity, mut location, mut store, instance) in player_query.iter_mut() {
-            let action = wasm_player_action(&mut store, &instance, &location, &game_map);
+            let action = wasm_player_action(&mut store, instance, &location, &game_map);
             apply_action(
                 &mut commands,
                 &asset_server,
