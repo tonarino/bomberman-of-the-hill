@@ -12,7 +12,7 @@ pub use anyhow;
 
 #[wasm_wrap]
 pub trait Player: Default {
-    fn act(&mut self, surroundings: Vec<(Tile, RelativePosition)>, result: LastTurnResult) -> Action;
+    fn act(&mut self, surroundings: Vec<(Tile, RelativePosition)>, last_result: LastTurnResult) -> Action;
     fn name(&self) -> String;
 }
 
