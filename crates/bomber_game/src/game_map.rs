@@ -1,8 +1,4 @@
-use std::{
-    convert::TryFrom,
-    ops::{Add, Sub},
-    str::FromStr,
-};
+use std::{array::IntoIter, convert::TryFrom, ops::{Add, Sub}, str::FromStr};
 
 use anyhow::{anyhow, Result};
 use bomber_lib::world::{Direction, Distance, Tile};
@@ -39,8 +35,8 @@ pub struct GameMap {
 
 impl GameMap {
     pub fn tiles_surrounding_location(&self, location: Location) -> Vec<(Tile, Distance)> {
-        (-1..=1)
-            .zip(-1..=1)
+        // TODO do more than the adjacent orthogonals, and do it programatically
+        IntoIter::new([(-1i32, 0i32), (1, 0), (0, 1), (0, -1)])
             .filter_map(|(x, y)| {
                 self.tile(location + (x, y)).and_then(|t| Some((t, Distance(x, y))))
             })

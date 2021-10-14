@@ -97,7 +97,6 @@ fn spawn_player(
     // Here the module is bound to a store.
     let instance = wasmtime::Instance::new(&mut store, &module, &[])?;
     let texture_handle = asset_server.load("graphics/player.png");
-    info!("Retrieving name");
     // TODO if this fails, the character should immediately be booted out (file deleted) to
     // guarantee stability
     let name = wasm_name(&mut store, &instance)?;
@@ -251,6 +250,5 @@ fn wasm_player_action(
 ) -> Result<Action> {
     let last_result = LastTurnResult::StoodStill; // TODO close the LastTurnResult loop.
     let tiles = game_map.tiles_surrounding_location(*location);
-    info!("Passing {:?}", tiles);
     wasm_act(store, instance, tiles, last_result)
 }

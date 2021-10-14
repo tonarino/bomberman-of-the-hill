@@ -98,7 +98,7 @@ fn build_wasm_wrapper(method: &syn::TraitItemMethod) -> quote::__private::TokenS
             ) -> ::anyhow::Result<#output> {
 
                 #input_processing
-                let return_length = method.call(store.as_context_mut(),(#(#shim_input_addresses as _, #shim_input_lengths as _),*))?;
+                let return_length = method.call(store.as_context_mut(),(#(#shim_input_addresses as _,)* #(#shim_input_lengths as _),*))?;
 
                 let mut dynamic_buffer = vec![0u8; return_length as usize];
                 memory.read(store.as_context_mut(), wasm_buffer_base_address as usize, dynamic_buffer.as_mut_slice())?;
