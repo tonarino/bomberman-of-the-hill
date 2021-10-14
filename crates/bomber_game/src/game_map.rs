@@ -41,16 +41,12 @@ impl Add<Direction> for Location {
 
     fn add(self, rhs: Direction) -> Self::Output {
         match rhs {
-            Direction::West | Direction::NorthWest | Direction::SouthWest if self.0 == 0 => None,
-            Direction::South | Direction::SouthWest | Direction::SouthEast if self.1 == 0 => None,
+            Direction::West  if self.0 == 0 => None,
+            Direction::South if self.1 == 0 => None,
             Direction::West => Some(Location(self.0 - 1, self.1)),
-            Direction::NorthWest => Some(Location(self.0 - 1, self.1 + 1)),
             Direction::North => Some(Location(self.0, self.1 + 1)),
-            Direction::NorthEast => Some(Location(self.0 + 1, self.1 + 1)),
             Direction::East => Some(Location(self.0 + 1, self.1)),
-            Direction::SouthEast => Some(Location(self.0 + 1, self.1 - 1)),
             Direction::South => Some(Location(self.0, self.1 - 1)),
-            Direction::SouthWest => Some(Location(self.0 - 1, self.1 - 1)),
         }
     }
 }
@@ -62,13 +58,6 @@ impl GameMap {
 
     pub fn tile(&self, location: Location) -> Option<Tile> {
         self.tiles.get(location.1).and_then(|v| v.get(location.0)).cloned()
-    }
-
-    /// When inspecting, out of bound tiles are considered to be walls. This simplifies
-    /// the Wasm API for now, but it should probably be replaced as this matures (otherwise
-    /// we're treating the wall as a sentinel value, and we can do better in Rust...)
-    pub fn inspect_from(&self, location: Location, direction: Direction) -> Tile {
-        (location + direction).and_then(|p| self.tile(p)).unwrap_or(Tile::Wall)
     }
 }
 

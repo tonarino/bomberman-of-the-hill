@@ -1,14 +1,15 @@
-pub mod wasm_helpers;
 pub mod world;
 
-use world::{Direction, World};
+use world::{Direction, RelativePosition, Tile};
+use serde::{Serialize, Deserialize};
+pub use bincode;
 
-pub trait Player {
-    fn spawn() -> Self;
-    fn act(&mut self, world: &impl World) -> Action;
+pub trait Player: Default {
+    fn act(&mut self, surroundings: Vec<(Tile, RelativePosition)>) -> Action;
+    fn name(&self) -> String;
 }
 
-#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub enum Action {
     Move(Direction),
     StayStill,

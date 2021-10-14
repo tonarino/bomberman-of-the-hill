@@ -5,7 +5,7 @@ use std::sync::Arc;
 use anyhow::{anyhow, Result};
 use bevy::prelude::*;
 use bomber_lib::Action;
-use wasmtime::{Caller, Func, Store};
+use wasmtime::Store;
 
 use crate::{
     error_sink,
@@ -106,19 +106,6 @@ fn spawn_player(
     // The Store owns all player-adjacent data, whether it's internal to the wasm module
     // or simply associated to the player (e.g. their position in the map)
     let mut store = Store::new(engine, data);
-
-    // The import bindings allow a player to call back to the game world. Note there is a security
-    // implication here; a player may call this function at any time. Currently it only requires
-    // shared immutable access through an `Arc`, but if the need arises for mutable access we'll
-    // have to worry about metering and avoiding potential deadlocks.
-    let player_inspect_wasm_import =
-        Func::wrap(&mut store, |caller: Caller<'_, PlayerStoreData>, direction_raw: u32| -> u32 {
-            // Through the `caller` struct, the `wasm` instance is able to
-            // access game state by retrieving a `PlayerStoreData` object.
-            let data = caller.data();
-            data.game_map.inspect_from(data.location, direction_raw.into()) as u32
-        });
-
     let wasm_bytes = assets
         .get(&handle)
         .ok_or_else(|| anyhow!("Wasm asset not found at runtime"))?
@@ -127,9 +114,8 @@ fn spawn_player(
 
     // Here the raw `wasm` is JIT compiled into a stateless module.
     let module = wasmtime::Module::new(engine, wasm_bytes)?;
-    let imports = &[player_inspect_wasm_import.into()];
     // Here the module is bound to a store and a set of imports to form a stateful instance.
-    let instance = wasmtime::Instance::new(&mut store, &module, imports)?;
+    let instance = wasmtime::Instance::new(&mut store, &module, &[])?;
     let player = Player { store, instance, handle };
     let texture_handle = asset_server.load("graphics/player.png");
     commands.spawn().insert(player).insert(module).insert_bundle(SpriteBundle {
@@ -265,6 +251,5 @@ fn death_marker_cleanup_system(
 
 /// Executes the `.wasm` export to get the player's decision given its current surroundings.
 fn wasm_player_action(player: &mut Player) -> Result<Action> {
-    let act = player.instance.get_typed_func::<(), u32, _>(&mut player.store, "__act")?;
-    Ok(Action::from(act.call(&mut player.store, ())?))
+    todo!();
 }
