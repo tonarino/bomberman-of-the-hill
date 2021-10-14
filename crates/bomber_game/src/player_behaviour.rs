@@ -3,7 +3,7 @@
 
 use anyhow::{anyhow, Result};
 use bevy::prelude::*;
-use bomber_lib::{Action, LastTurnResult, wasm_act};
+use bomber_lib::{Action, LastTurnResult, wasm_act, wasm_name};
 use wasmtime::Store;
 
 use crate::{
@@ -97,6 +97,11 @@ fn spawn_player(
     // Here the module is bound to a store.
     let instance = wasmtime::Instance::new(&mut store, &module, &[])?;
     let texture_handle = asset_server.load("graphics/player.png");
+    info!("Retrieving name");
+    // TODO if this fails, the character should immediately be booted out (file deleted) to
+    // guarantee stability
+    let name = wasm_name(&mut store, &instance)?;
+    info!("{} has entered the game!", name);
     commands
         .spawn()
         .insert(Player)
@@ -104,6 +109,7 @@ fn spawn_player(
         .insert(store)
         .insert(INITIAL_LOCATION)
         .insert(handle)
+        .insert(name)
         .insert_bundle(SpriteBundle {
             material: materials.add(texture_handle.into()),
             transform: Transform::from_translation(
@@ -244,5 +250,7 @@ fn wasm_player_action(
     game_map: &GameMap,
 ) -> Result<Action> {
     let last_result = LastTurnResult::StoodStill; // TODO close the LastTurnResult loop.
-    wasm_act(store, instance, game_map.tiles_surrounding_location(*location), last_result)
+    let tiles = game_map.tiles_surrounding_location(*location);
+    info!("Passing {:?}", tiles);
+    wasm_act(store, instance, tiles, last_result)
 }

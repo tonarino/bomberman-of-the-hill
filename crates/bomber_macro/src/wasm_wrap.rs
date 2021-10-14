@@ -16,9 +16,8 @@ pub fn implementation(input: TokenStream) -> TokenStream {
     let expanded = quote! {
         #trait_block
 
-        #[cfg(not(target_family = "wasm"))]
         #[derive(::serde::Serialize, ::serde::Deserialize)]
-        struct __WasmOutputLocator { address: i32, size: u32 }
+        pub struct __WasmOutputLocator { pub address: i32, pub size: u32 }
 
         #(#wrappers)*
     };
@@ -28,7 +27,7 @@ pub fn implementation(input: TokenStream) -> TokenStream {
 
 fn build_wasm_wrapper(method: &syn::TraitItemMethod) -> quote::__private::TokenStream {
     let wrapper_identifier = format_ident!("wasm_{}", method.sig.ident.clone());
-    let shim_identifier = format!("__wasm_{}", method.sig.ident.clone());
+    let shim_identifier = format!("__wasm_shim_{}", method.sig.ident.clone());
 
     // We can only work with non-self arguments represented by an identifier
     let valid_inputs: Vec<_> = method
@@ -69,19 +68,21 @@ fn build_wasm_wrapper(method: &syn::TraitItemMethod) -> quote::__private::TokenS
     };
 
     let input_processing = quote! {
+
         let memory = instance.get_memory(store.as_context_mut(), "memory")
             .ok_or(anyhow::anyhow!("Wasm memory block not found"))?;
-        let get_input_buffer_address = instance.get_typed_func::<(), i32, _>(
-            store.as_context_mut(), "__wasm_get_input_buffer_address"
+        let get_wasm_buffer_address = instance.get_typed_func::<(), i32, _>(
+            store.as_context_mut(), "__wasm_get_buffer_address"
         )?;
-        let mut input_buffer_address = get_input_buffer_address.call(store.as_context_mut(), ())?;
+        let wasm_buffer_base_address = get_wasm_buffer_address.call(store.as_context_mut(), ())?;
+        let mut wasm_buffer_address = wasm_buffer_base_address;
 
         #(
             let #input_patterns = bincode::serialize(&#input_patterns)?;
-            let #shim_input_addresses = input_buffer_address as usize;
+            let #shim_input_addresses = wasm_buffer_address as usize;
             let #shim_input_lengths = #input_patterns.as_slice().len();
             memory.write(store.as_context_mut(), #shim_input_addresses, #input_patterns.as_slice())?;
-            input_buffer_address += #shim_input_lengths as i32;
+            wasm_buffer_address += #shim_input_lengths as i32;
         )*
 
         let method = instance.get_typed_func::<(#(#shim_input_types),*), #shim_output_type, _>(store.as_context_mut(), #shim_identifier)?;
@@ -95,14 +96,14 @@ fn build_wasm_wrapper(method: &syn::TraitItemMethod) -> quote::__private::TokenS
                 instance: & ::wasmtime::Instance,
                 #(#valid_inputs),*
             ) -> ::anyhow::Result<#output> {
+
                 #input_processing
-                let locator_address = method.call(store.as_context_mut(),(#(#shim_input_addresses as _, #shim_input_lengths as _),*))?;
-                let mut buffer = [0u8; core::mem::size_of::<__WasmOutputLocator>()];
-                memory.read(store.as_context_mut(), locator_address as usize, &mut buffer)?;
-                let locator: __WasmOutputLocator = bincode::deserialize(&buffer)?;
-                let mut dynamic_buffer = vec![0u8; locator.size as usize];
-                memory.read(store.as_context_mut(), locator.address as usize, dynamic_buffer.as_mut_slice())?;
-                Ok(bincode::deserialize(dynamic_buffer.as_slice())?)
+                let return_length = method.call(store.as_context_mut(),(#(#shim_input_addresses as _, #shim_input_lengths as _),*))?;
+
+                let mut dynamic_buffer = vec![0u8; return_length as usize];
+                memory.read(store.as_context_mut(), wasm_buffer_base_address as usize, dynamic_buffer.as_mut_slice())?;
+                let result = bincode::deserialize(dynamic_buffer.as_slice())?;
+                Ok(result)
             }
         }
     } else {

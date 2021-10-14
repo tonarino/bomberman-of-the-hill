@@ -6,7 +6,6 @@ use bomber_lib::{
     Action, LastTurnResult, Player,
 };
 use bomber_macro::wasm_export;
-use serde::{Deserialize, Serialize};
 
 struct Wanderer {
     preferred_direction: Direction,
