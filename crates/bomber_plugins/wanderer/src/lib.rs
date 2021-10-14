@@ -1,11 +1,8 @@
 use std::convert::TryFrom;
 
-use bomber_lib::{
-    self,
-    world::{Direction, Tile},
-    Action, Player,
-};
+use bomber_lib::{self, Action, LastTurnResult, Player, world::{Direction, Tile}};
 use bomber_macro::wasm_export;
+use serde::{Serialize, Deserialize};
 
 struct Wanderer {
     preferred_direction: Direction,
@@ -21,7 +18,9 @@ impl Default for Wanderer {
 
 #[wasm_export]
 impl Player for Wanderer {
-    fn act(&mut self, surroundings: Vec<(Tile, bomber_lib::world::RelativePosition)>) -> Action {
+    fn act(&mut self,
+           surroundings: Vec<(Tile, bomber_lib::world::RelativePosition)>,
+           _last_result: LastTurnResult) -> Action {
         // A wanderer walks to their preferred direction if it's free.
         // If it isn't, they  walk to the first free tile they inspect.
         let preferred_tile = surroundings

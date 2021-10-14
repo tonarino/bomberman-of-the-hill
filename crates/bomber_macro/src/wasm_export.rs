@@ -33,7 +33,7 @@ pub fn implementation(input: TokenStream) -> TokenStream {
         #[no_mangle]
         static __WASM_INPUT_BUFFER: [u8; #INPUT_BUFFER_SIZE_BYTES] = [0u8; 10_000];
 
-        #[derive(bomber_lib::Serialize, bomber_lib::Deserialize)]
+        #[derive(Serialize, Deserialize)]
         struct __WasmOutputLocator { address: i32, size: u32 }
 
         #[no_mangle]

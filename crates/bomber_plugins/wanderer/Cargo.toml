@@ -8,6 +8,7 @@ edition = "2018"
 [dependencies]
 strum = "0.21"
 lazy_static = "1"
+serde = { version = "1", features = ["derive"] }
 
 [dependencies.bomber_lib]
 path = "../../bomber_lib"
