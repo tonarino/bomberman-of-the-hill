@@ -4,7 +4,7 @@ use bomber_macro::wasm_wrap;
 #[cfg(not(target_family = "wasm"))]
 use wasmtime::AsContextMut;
 
-use world::{Direction, Distance, Tile};
+use world::{Direction, TileOffset, Tile};
 
 // Reexports for quality of life when using the wasm macros
 #[cfg(not(target_family = "wasm"))]
@@ -16,7 +16,7 @@ pub use wasmtime;
 
 #[wasm_wrap]
 pub trait Player: Default {
-    fn act(&mut self, surroundings: Vec<(Tile, Distance)>, last_result: LastTurnResult) -> Action;
+    fn act(&mut self, surroundings: Vec<(Tile, TileOffset)>, last_result: LastTurnResult) -> Action;
     fn name(&self) -> String;
 }
 

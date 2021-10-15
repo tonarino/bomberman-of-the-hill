@@ -23,15 +23,14 @@ impl Default for Wanderer {
 impl Player for Wanderer {
     fn act(
         &mut self,
-        surroundings: Vec<(Tile, bomber_lib::world::Distance)>,
+        surroundings: Vec<(Tile, bomber_lib::world::TileOffset)>,
         _last_result: LastTurnResult,
     ) -> Action {
         // A wanderer walks to their preferred direction if it's free.
         // If it isn't, they  walk to the first free tile they inspect.
-        #[allow(clippy::identity_op)]
         let preferred_tile = surroundings
             .iter()
-            .find_map(|(t, p)| (*p == (self.preferred_direction * 1)).then(|| t));
+            .find_map(|(t, p)| (*p == self.preferred_direction.extend(1)).then(|| t));
         if matches!(preferred_tile, Some(Tile::EmptyFloor)) {
             Action::Move(Direction::North)
         } else {

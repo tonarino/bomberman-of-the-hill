@@ -25,20 +25,14 @@ fn build_wasm_wrapper(method: &syn::TraitItemMethod) -> quote::__private::TokenS
     let wrapper_identifier = format_ident!("wasm_{}", method.sig.ident.clone());
     let shim_identifier = format!("__wasm_shim_{}", method.sig.ident.clone());
 
-    // We can only work with non-self arguments represented by an identifier
-    let valid_inputs: Vec<_> = method
+    let (valid_inputs, input_patterns): (Vec<_>, Vec<_>) = method
         .sig
         .inputs
-        .iter()
-        .filter(|i| matches!(i, syn::FnArg::Typed(t) if matches!(&*t.pat, Pat::Ident(_))))
-        .collect();
-
-    let input_patterns: Vec<_> = valid_inputs
         .iter()
         .filter_map(|i| {
             if let syn::FnArg::Typed(t) = i {
                 if let Pat::Ident(id) = &*t.pat {
-                    Some(id)
+                    Some((i.clone(), id))
                 } else {
                     None
                 }
@@ -46,7 +40,7 @@ fn build_wasm_wrapper(method: &syn::TraitItemMethod) -> quote::__private::TokenS
                 None
             }
         })
-        .collect();
+        .unzip();
 
     let shim_input_addresses: Vec<_> =
         input_patterns.iter().map(|p| format_ident!("{}_address", p.ident)).collect();
@@ -67,13 +61,21 @@ fn build_wasm_wrapper(method: &syn::TraitItemMethod) -> quote::__private::TokenS
         let get_wasm_buffer_address = instance.get_typed_func::<(), i32, _>(
             store.as_context_mut(), "__wasm_get_buffer_address"
         )?;
+        let get_wasm_buffer_size = instance.get_typed_func::<(), i32, _>(
+            store.as_context_mut(), "__wasm_get_buffer_size"
+        )?;
         let wasm_buffer_base_address = get_wasm_buffer_address.call(store.as_context_mut(), ())?;
+        let wasm_buffer_size = get_wasm_buffer_size.call(store.as_context_mut(), ())? as usize;
         let mut wasm_buffer_address = wasm_buffer_base_address;
 
         #(
             let #input_patterns = bincode::serialize(&#input_patterns)?;
             let #shim_input_addresses = wasm_buffer_address as usize;
             let #shim_input_lengths = #input_patterns.as_slice().len();
+            let buffer_space_required = #shim_input_addresses.saturating_sub(wasm_buffer_base_address as usize) + #shim_input_lengths;
+            if buffer_space_required > wasm_buffer_size {
+                return Err(anyhow::anyhow!("Wasm method inputs too big for the `wasm` buffer"));
+            }
             memory.write(store.as_context_mut(), #shim_input_addresses, #input_patterns.as_slice())?;
             wasm_buffer_address += #shim_input_lengths as i32;
         )*

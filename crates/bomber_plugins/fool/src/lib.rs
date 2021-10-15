@@ -12,7 +12,7 @@ struct Fool;
 impl Player for Fool {
     fn act(
         &mut self,
-        _surroundings: Vec<(Tile, bomber_lib::world::Distance)>,
+        _surroundings: Vec<(Tile, bomber_lib::world::TileOffset)>,
         _last_result: LastTurnResult,
     ) -> Action {
         // A fool ignores everything and just walks north!

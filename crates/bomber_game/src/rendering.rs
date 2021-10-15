@@ -1,12 +1,12 @@
 use bevy::prelude::*;
 use bomber_lib::world::Tile;
 
-use crate::game_map::{GameMap, Location};
+use crate::game_map::{GameMap, TileLocation};
 
 pub const TILE_WIDTH_PX: f32 = 50.0;
 pub const GAME_MAP_Z: f32 = 0.0;
 
-impl Location {
+impl TileLocation {
     pub fn as_pixels(&self, game_map: &GameMap, z: f32) -> Vec3 {
         let (width, height) = game_map.size();
         let game_map_offset = Vec2::new(
@@ -35,7 +35,7 @@ pub fn draw_game_map(
     let (width, height) = game_map.size();
     for i in 0..width {
         for j in 0..height {
-            let material = match game_map.tile(Location(i, j)) {
+            let material = match game_map.tile(TileLocation(i, j)) {
                 Some(Tile::Wall) => &wall,
                 Some(Tile::EmptyFloor) => &floor,
                 Some(Tile::Lava) => &lava,

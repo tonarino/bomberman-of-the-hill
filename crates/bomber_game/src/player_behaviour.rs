@@ -8,7 +8,7 @@ use wasmtime::Store;
 
 use crate::{
     error_sink,
-    game_map::{self, GameMap, Location, INITIAL_LOCATION},
+    game_map::{self, GameMap, TileLocation, INITIAL_LOCATION},
     player_hotswap::{PlayerHandles, WasmPlayerAsset},
     rendering::{GAME_MAP_Z, TILE_WIDTH_PX},
 };
@@ -124,7 +124,7 @@ fn spawn_player(
 /// in the game_map.
 fn player_positioning_system(
     game_map: Res<GameMap>,
-    mut players: Query<(&mut Transform, &Location), With<Player>>,
+    mut players: Query<(&mut Transform, &TileLocation), With<Player>>,
 ) {
     for (mut transform, location) in players.iter_mut() {
         transform.translation = location.as_pixels(&game_map, GAME_MAP_Z + 1.0);
@@ -138,7 +138,7 @@ fn player_movement_system(
     time: Res<Time>,
     mut timer_query: Query<&mut Timer, With<PlayerTimer>>,
     mut player_query: Query<
-        (Entity, &mut Location, &mut wasmtime::Store<()>, &wasmtime::Instance),
+        (Entity, &mut TileLocation, &mut wasmtime::Store<()>, &wasmtime::Instance),
         With<Player>,
     >,
     game_map: Res<GameMap>,
@@ -170,7 +170,7 @@ fn apply_action(
     asset_server: &AssetServer,
     materials: &mut Assets<ColorMaterial>,
     action: Action,
-    location: &mut Location,
+    location: &mut TileLocation,
     game_map: &GameMap,
     player_entity: Entity,
 ) {
@@ -210,7 +210,7 @@ fn kill_player(
     asset_server: &AssetServer,
     materials: &mut Assets<ColorMaterial>,
     player_entity: Entity,
-    new_location: game_map::Location,
+    new_location: game_map::TileLocation,
     game_map: &GameMap,
 ) {
     let texture_handle = asset_server.load("graphics/death.png");
@@ -245,7 +245,7 @@ fn death_marker_cleanup_system(
 fn wasm_player_action(
     store: &mut wasmtime::Store<()>,
     instance: &wasmtime::Instance,
-    location: &Location,
+    location: &TileLocation,
     game_map: &GameMap,
 ) -> Result<Action> {
     let last_result = LastTurnResult::StoodStill; // TODO close the LastTurnResult loop.

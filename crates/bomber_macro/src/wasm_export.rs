@@ -24,10 +24,11 @@ pub fn implementation(input: TokenStream) -> TokenStream {
         }
 
         #[no_mangle]
-        static mut __WASM_BUFFER: [u8; #BUFFER_SIZE_BYTES] = [0u8; 10_000];
+        static mut __WASM_BUFFER: [u8; #BUFFER_SIZE_BYTES] = [0u8; #BUFFER_SIZE_BYTES];
 
         #[no_mangle]
         fn __wasm_get_buffer_address() -> i32 { unsafe { __WASM_BUFFER.as_ptr() as _ } }
+        #[no_mangle]
         fn __wasm_get_buffer_size() -> u32 { #BUFFER_SIZE_BYTES as _ }
     });
 
@@ -67,6 +68,7 @@ fn build_shim(method: &ImplItemMethod, implementer: &Type) -> TokenStream {
                 #shim_reconstruction
                 #inner_invocation
                 let serialized_output = bomber_lib::bincode::serialize(&output).expect("Failed to serialize output");
+                assert!( unsafe { __WASM_BUFFER.len() >= serialized_output.len() } );
                 unsafe { __WASM_BUFFER.iter_mut().zip(serialized_output.iter()).for_each(|(o, i)| *o = *i); }
                 serialized_output.len() as i32
             }
