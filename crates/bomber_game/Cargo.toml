@@ -10,6 +10,7 @@ wasmtime = "0.30"
 # TODO(bschwind) - Remove the 'dynamic' feature flag before deployment of the final version.
 bevy = { version = "0.5", features = ["dynamic"] }
 anyhow = "1"
+rand = "0.8"
 
 [dependencies.bomber_lib]
 path = "../bomber_lib"

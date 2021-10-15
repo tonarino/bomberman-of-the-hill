@@ -3,32 +3,30 @@
 
 use anyhow::{anyhow, Result};
 use bevy::prelude::*;
-use bomber_lib::{wasm_act, wasm_name, wasm_team_name, Action, LastTurnResult};
+use bomber_lib::{
+    wasm_act, wasm_name, wasm_team_name,
+    world::{Direction, Object, Tile},
+    Action, LastTurnResult,
+};
 use wasmtime::Store;
 
-use crate::{
-    error_sink,
-    game_map::{self, GameMap, TileLocation, INITIAL_LOCATION},
-    player_hotswap::{PlayerHandles, WasmPlayerAsset},
-    rendering::{GAME_MAP_Z, TILE_WIDTH_PX},
-};
+use crate::{downgrade_error, game_map::{GameMap, PlayerSpawner, TileLocation}, log_recoverable_error, log_unrecoverable_error_and_panic, player_hotswap::{PlayerHandles, WasmPlayerAsset}, rendering::{PLAYER_HEIGHT_PX, PLAYER_WIDTH_PX, PLAYER_Z}};
 
 pub struct PlayerBehaviourPlugin;
 /// Marks a player
 struct Player;
 /// Marks the timer used to sequence all player actions (the universal tick)
 struct PlayerTimer;
-/// Marks the skull sprite used to signal a player death for a few seconds
-struct DeathMarker;
+
+const PLAYER_VIEW_TAXICAB_DISTANCE: u32 = 3;
 
 impl Plugin for PlayerBehaviourPlugin {
     fn build(&self, app: &mut AppBuilder) {
         app.add_startup_system(setup.system())
             .insert_resource(wasmtime::Engine::default())
             .add_system(player_spawn_system.system())
-            .add_system(player_positioning_system.system())
-            .add_system(player_movement_system.system().chain(error_sink.system()))
-            .add_system(death_marker_cleanup_system.system());
+            .add_system(player_positioning_system.system().chain(log_unrecoverable_error_and_panic.system()))
+            .add_system(player_action_system.system().chain(downgrade_error.system()));
     }
 }
 
@@ -42,33 +40,60 @@ fn setup(mut commands: Commands) {
 fn player_spawn_system(
     mut commands: Commands,
     handles: Res<PlayerHandles>,
-    players: Query<(Entity, &Handle<WasmPlayerAsset>), With<Player>>,
-    game_map: Res<GameMap>,
+    game_map_query: Query<&GameMap>,
+    player_query: Query<(Entity, &Handle<WasmPlayerAsset>, &TileLocation), With<Player>>,
+    spawner_query: Query<&TileLocation, With<PlayerSpawner>>,
+    object_query: Query<&TileLocation, With<Object>>,
     engine: Res<wasmtime::Engine>,
     asset_server: Res<AssetServer>,
     assets: Res<Assets<WasmPlayerAsset>>,
     mut materials: ResMut<Assets<ColorMaterial>>,
 ) {
+    let game_map = game_map_query.single().expect("Game map not found");
     // Despawn all excess players (if the wasm file was unloaded)
-    for (entity, handle) in players.iter() {
+    for (entity, handle, _) in player_query.iter() {
         if handles.0.iter().all(|h| h.id != handle.id) {
             commands.entity(entity).despawn_recursive();
         }
     }
+
+    // Retrieve all spawner locations that aren't occupied by an object
+    // or another player
+    let mut available_spawn_locations: Vec<_> = spawner_query
+        .iter()
+        .cloned()
+        .filter(|spawner_location| {
+            object_query.iter().all(|object_location| object_location != spawner_location)
+                && player_query
+                    .iter()
+                    .all(|(.., player_location)| player_location != spawner_location)
+        })
+        .collect();
+
+    // Sort them in ascending order of distance to other players
+    available_spawn_locations.sort_by_key(|spawner| {
+        spawner.taxicab_distance_to_closest(
+            player_query.iter().map(|(.., player_location)| player_location).cloned(),
+        )
+    });
     // Spawn all missing players (if the wasm file was just loaded)
-    for handle in handles.0.iter() {
-        if players.iter().all(|(_, h)| h.id != handle.id) {
-            spawn_player(
-                handle.clone(),
-                &game_map,
-                &engine,
-                &asset_server,
-                &assets,
-                &mut commands,
-                &mut materials,
-            )
-            .ok();
-        }
+    for (handle, location) in handles
+        .0
+        .iter()
+        .filter(|handle| player_query.iter().all(|(_, h, _)| h.id != handle.id))
+        .zip(available_spawn_locations.iter())
+    {
+        spawn_player(
+            handle.clone(),
+            *location,
+            &game_map,
+            &engine,
+            &asset_server,
+            &assets,
+            &mut commands,
+            &mut materials,
+        )
+        .ok();
     }
 }
 
@@ -77,6 +102,7 @@ fn player_spawn_system(
 /// get a "callback" into the world to use as they remain alive.
 fn spawn_player(
     handle: Handle<WasmPlayerAsset>,
+    location: TileLocation,
     game_map: &GameMap,
     engine: &wasmtime::Engine,
     asset_server: &AssetServer,
@@ -96,7 +122,7 @@ fn spawn_player(
     let module = wasmtime::Module::new(engine, wasm_bytes)?;
     // Here the module is bound to a store.
     let instance = wasmtime::Instance::new(&mut store, &module, &[])?;
-    let texture_handle = asset_server.load("graphics/player.png");
+    let texture_handle = asset_server.load("graphics/Sprites/Bomberman/Front/Bman_F_f00.png");
     // TODO if this fails, the character should immediately be booted out (file deleted) to
     // guarantee stability
     let name = wasm_name(&mut store, &instance)?;
@@ -107,149 +133,111 @@ fn spawn_player(
         .insert(Player)
         .insert(instance)
         .insert(store)
-        .insert(INITIAL_LOCATION)
+        .insert(location)
         .insert(handle)
         .insert(name)
         .insert_bundle(SpriteBundle {
             material: materials.add(texture_handle.into()),
             transform: Transform::from_translation(
-                INITIAL_LOCATION.as_pixels(game_map, GAME_MAP_Z + 1.0),
+                location.to_world_coordinates(game_map).extend(PLAYER_Z),
             ),
-            sprite: Sprite::new(Vec2::splat(TILE_WIDTH_PX)),
+            sprite: Sprite::new(Vec2::new(PLAYER_WIDTH_PX, PLAYER_HEIGHT_PX)),
             ..Default::default()
         });
     Ok(())
 }
 
-/// Continuously updates the player transform to match its abstract location
-/// in the game_map.
 fn player_positioning_system(
-    game_map: Res<GameMap>,
-    mut players: Query<(&mut Transform, &TileLocation), With<Player>>,
-) {
-    for (mut transform, location) in players.iter_mut() {
-        transform.translation = location.as_pixels(&game_map, GAME_MAP_Z + 1.0);
+    game_map_query: Query<&GameMap>,
+    mut player_query: Query<(&mut Transform, &TileLocation), With<Player>>,
+) -> Result<()> {
+    let game_map = game_map_query.single()?;
+    for (mut transform, location) in player_query.iter_mut() {
+        transform.translation = location.to_world_coordinates(game_map).extend(PLAYER_Z);
     }
+    Ok(())
 }
 
 /// Every universal tick, queries all players for their desired action and applies
 /// it. At the moment this only results in movement (or death) but will likely expand
 /// into more complex actions.
-fn player_movement_system(
+fn player_action_system(
     time: Res<Time>,
     mut timer_query: Query<&mut Timer, With<PlayerTimer>>,
     mut player_query: Query<
-        (Entity, &mut TileLocation, &mut wasmtime::Store<()>, &wasmtime::Instance),
+        (&mut TileLocation, &mut wasmtime::Store<()>, &wasmtime::Instance, &String),
         With<Player>,
     >,
-    game_map: Res<GameMap>,
-    asset_server: Res<AssetServer>,
-    mut materials: ResMut<Assets<ColorMaterial>>,
-    mut commands: Commands,
+    tile_query: Query<(&TileLocation, &Tile), (Without<Player>, Without<Object>)>,
+    object_query: Query<(&TileLocation, &Object), (Without<Player>, Without<Tile>)>,
 ) -> Result<()> {
     let mut timer = timer_query.single_mut().unwrap();
     if timer.tick(time.delta()).just_finished() {
-        for (entity, mut location, mut store, instance) in player_query.iter_mut() {
-            let action = wasm_player_action(&mut store, instance, &location, &game_map);
+        for (mut location, mut store, instance, player_name) in player_query.iter_mut() {
+            let action = wasm_player_action(&mut store, instance, &location, tile_query.iter())?;
             apply_action(
-                &mut commands,
-                &asset_server,
-                &mut materials,
-                action?,
+                action,
+                player_name,
+                tile_query.iter(),
+                object_query.iter(),
                 &mut location,
-                &game_map,
-                entity,
-            );
+
+            )?;
         }
     }
     Ok(())
 }
 
 /// Applies the action chosen by a player, causing an impact on the world or itself.
-fn apply_action(
-    commands: &mut Commands,
-    asset_server: &AssetServer,
-    materials: &mut Assets<ColorMaterial>,
+fn apply_action<'a>(
     action: Action,
-    location: &mut TileLocation,
-    game_map: &GameMap,
-    player_entity: Entity,
-) {
-    let new_location = match action {
-        Action::Move(direction) => (*location + direction).unwrap_or(*location),
-        Action::StayStill => *location,
-    };
-
-    match game_map.tile(new_location) {
-        Some(bomber_lib::world::Tile::Wall) => {
-            info!("A player ({:?}) bumps into a wall at {:?}.", player_entity, new_location)
-        },
-        Some(bomber_lib::world::Tile::EmptyFloor) => {
-            info!("A player ({:?}) walks into {:?}", player_entity, new_location);
-            *location = new_location;
-        },
-        Some(bomber_lib::world::Tile::Switch) => {
-            info!("A player ({:?}) presses a switch at {:?}", player_entity, new_location)
-        },
-        Some(bomber_lib::world::Tile::Lava) => {
-            info!("A player ({:?}) dissolves in lava at {:?}", player_entity, new_location);
-            kill_player(commands, asset_server, materials, player_entity, new_location, game_map);
-        },
-        None => {
-            info!(
-                "A player ({:?}) somehow walks into the void at {:?}...",
-                player_entity, new_location
-            );
-            kill_player(commands, asset_server, materials, player_entity, new_location, game_map);
-        },
-    };
+    player_name: &str,
+    tiles: impl Iterator<Item = (&'a TileLocation, &'a Tile)>,
+    objects: impl Iterator<Item = (&'a TileLocation, &'a Object)>,
+    player_location: &mut TileLocation,
+) -> Result<()> {
+    match action {
+        Action::Move(direction) => move_player(player_name, player_location, direction, tiles, objects),
+        Action::StayStill => Ok(()),
+    }
 }
 
-/// Despawns a player and leaves a death marker for a few seconds.
-fn kill_player(
-    commands: &mut Commands,
-    asset_server: &AssetServer,
-    materials: &mut Assets<ColorMaterial>,
-    player_entity: Entity,
-    new_location: game_map::TileLocation,
-    game_map: &GameMap,
-) {
-    let texture_handle = asset_server.load("graphics/death.png");
-    commands.entity(player_entity).despawn_recursive();
-    commands
-        .spawn_bundle(SpriteBundle {
-            material: materials.add(texture_handle.into()),
-            sprite: Sprite::new(Vec2::splat(TILE_WIDTH_PX)),
-            transform: Transform::from_translation(
-                new_location.as_pixels(game_map, GAME_MAP_Z + 1.0),
-            ),
-            ..Default::default()
-        })
-        .insert(DeathMarker)
-        .insert(Timer::from_seconds(2.0, false));
-}
+fn move_player<'a>(
+    player_name: &str,
+    player_location: &mut TileLocation,
+    direction: Direction,
+    mut tiles: impl Iterator<Item = (&'a TileLocation, &'a Tile)>,
+    objects: impl Iterator<Item = (&'a TileLocation, &'a Object)>,
+) -> Result<()> {
+    let target_location =
+        (*player_location + direction).ok_or(anyhow!("Invalid target location ({})", player_name))?;
+    let target_tile = tiles
+        .find_map(|(l, t)| (*l == target_location).then(|| t))
+        .ok_or(anyhow!("No tile at target location ({})", player_name))?;
+    let objects_on_target_tile = objects.filter_map(|(l, o)| (*l == target_location).then(|| o)).count();
 
-/// Cleans up death markers as their timers expire.
-fn death_marker_cleanup_system(
-    mut commands: Commands,
-    mut query: Query<(Entity, &mut Timer), With<DeathMarker>>,
-    time: Res<Time>,
-) {
-    for (entity, mut timer) in query.iter_mut() {
-        if timer.tick(time.delta()).just_finished() {
-            commands.entity(entity).despawn_recursive();
-        }
+    match target_tile {
+        Tile::EmptyFloor | Tile::Hill if objects_on_target_tile == 0 => {
+            *player_location = target_location;
+            Ok(())
+        },
+        _ => Err(anyhow!("Can't move to target tile ({})", player_name)),
     }
 }
 
 /// Executes the `.wasm` export to get the player's decision given its current surroundings.
-fn wasm_player_action(
+fn wasm_player_action<'a>(
     store: &mut wasmtime::Store<()>,
     instance: &wasmtime::Instance,
-    location: &TileLocation,
-    game_map: &GameMap,
+    player_location: &TileLocation,
+    tiles: impl Iterator<Item = (&'a TileLocation, &'a Tile)>,
 ) -> Result<Action> {
     let last_result = LastTurnResult::StoodStill; // TODO close the LastTurnResult loop.
-    let tiles = game_map.tiles_surrounding_location(*location);
-    wasm_act(store, instance, tiles, last_result)
+    let player_surroundings: Vec<_> = tiles
+        .filter_map(|(location, tile)| {
+            ((*location - *player_location).taxicab_distance() <= PLAYER_VIEW_TAXICAB_DISTANCE)
+                .then(|| (*tile, (*location - *player_location)))
+        })
+        .collect();
+    wasm_act(store, instance, player_surroundings, last_result)
 }
