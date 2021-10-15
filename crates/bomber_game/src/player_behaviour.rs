@@ -3,7 +3,7 @@
 
 use anyhow::{anyhow, Result};
 use bevy::prelude::*;
-use bomber_lib::{Action, LastTurnResult, wasm_act, wasm_name, wasm_team_name};
+use bomber_lib::{wasm_act, wasm_name, wasm_team_name, Action, LastTurnResult};
 use wasmtime::Store;
 
 use crate::{

@@ -6,7 +6,7 @@ use std::{
 };
 
 use anyhow::{anyhow, Result};
-use bomber_lib::world::{Direction, TileOffset, Tile};
+use bomber_lib::world::{Direction, Tile, TileOffset};
 
 use crate::Wrapper;
 
@@ -42,7 +42,9 @@ impl GameMap {
     pub fn tiles_surrounding_location(&self, location: TileLocation) -> Vec<(Tile, TileOffset)> {
         // TODO do more than the adjacent orthogonals, and do it programatically
         IntoIter::new([(-1i32, 0i32), (1, 0), (0, 1), (0, -1)])
-            .filter_map(|(x, y)| self.tile(location + TileOffset(x, y)).map(|t| (t, TileOffset(x, y))))
+            .filter_map(|(x, y)| {
+                self.tile(location + TileOffset(x, y)).map(|t| (t, TileOffset(x, y)))
+            })
             .collect()
     }
 }

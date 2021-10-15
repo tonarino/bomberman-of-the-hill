@@ -9,7 +9,7 @@ struct MethodData {
     method_identifier: Ident,
     shim_identifier: Ident,
     takes_self: bool,
-    has_output: bool
+    has_output: bool,
 }
 
 struct SignatureData {
@@ -54,9 +54,14 @@ pub fn implementation(input: TokenStream) -> TokenStream {
 }
 
 fn build_shim(method: &ImplItemMethod, implementer: &Type) -> TokenStream {
-    let MethodData { method_identifier, shim_identifier, takes_self, has_output } = reflect_on_method(method);
-    let SignatureData { argument_identifiers, pointer_identifiers, length_identifiers, slice_identifiers } =
-        reflect_on_signature(method);
+    let MethodData { method_identifier, shim_identifier, takes_self, has_output } =
+        reflect_on_method(method);
+    let SignatureData {
+        argument_identifiers,
+        pointer_identifiers,
+        length_identifiers,
+        slice_identifiers,
+    } = reflect_on_signature(method);
 
     let shim_reconstruction = quote! {
         #(
@@ -99,9 +104,7 @@ fn build_shim(method: &ImplItemMethod, implementer: &Type) -> TokenStream {
     proc_macro::TokenStream::from(expanded)
 }
 
-fn reflect_on_signature(
-    method: &ImplItemMethod,
-) -> SignatureData {
+fn reflect_on_signature(method: &ImplItemMethod) -> SignatureData {
     let inputs: Vec<_> = method.sig.inputs.iter().collect();
     let non_self_input_types = inputs.iter().filter_map(|i| match i {
         syn::FnArg::Typed(t) => Some(t),
@@ -115,7 +118,12 @@ fn reflect_on_signature(
     let length_identifiers: Vec<_> =
         indices.clone().map(|i| format_ident!("argument_length_{}", i)).collect();
     let slice_identifiers = indices.map(|i| format_ident!("argument_slice_{}", i)).collect();
-    SignatureData{ argument_identifiers, pointer_identifiers, length_identifiers, slice_identifiers }
+    SignatureData {
+        argument_identifiers,
+        pointer_identifiers,
+        length_identifiers,
+        slice_identifiers,
+    }
 }
 
 fn reflect_on_method(method: &ImplItemMethod) -> MethodData {

@@ -26,7 +26,7 @@ pub enum Tile {
 pub struct TileOffset(pub i32, pub i32);
 
 impl Direction {
-        pub fn extend<T: Into<i32>>(&self, amount: T) -> TileOffset {
+    pub fn extend<T: Into<i32>>(&self, amount: T) -> TileOffset {
         match self {
             Direction::West => TileOffset(-amount.into(), 0),
             Direction::North => TileOffset(0, amount.into()),
