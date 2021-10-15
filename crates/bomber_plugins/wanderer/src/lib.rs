@@ -36,7 +36,7 @@ impl Player for Wanderer {
         } else {
             surroundings
                 .iter()
-                .filter(|(t, p)| p.adjacent() && matches!(t, Tile::EmptyFloor))
+                .filter(|(t, p)| p.is_adjacent() && matches!(t, Tile::EmptyFloor))
                 .find_map(|(_, p)| Direction::try_from(*p).map(Action::Move).ok())
                 .unwrap_or(Action::StayStill)
         }
@@ -44,5 +44,9 @@ impl Player for Wanderer {
 
     fn name(&self) -> String {
         "Wanderman".into()
+    }
+
+    fn team_name() -> String {
+        "The Nomads".into()
     }
 }

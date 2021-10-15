@@ -18,6 +18,7 @@ pub use wasmtime;
 pub trait Player: Default {
     fn act(&mut self, surroundings: Vec<(Tile, TileOffset)>, last_result: LastTurnResult) -> Action;
     fn name(&self) -> String;
+    fn team_name() -> String;
 }
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]

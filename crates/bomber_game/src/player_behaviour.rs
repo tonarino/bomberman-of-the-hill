@@ -3,7 +3,7 @@
 
 use anyhow::{anyhow, Result};
 use bevy::prelude::*;
-use bomber_lib::{wasm_act, wasm_name, Action, LastTurnResult};
+use bomber_lib::{Action, LastTurnResult, wasm_act, wasm_name, wasm_team_name};
 use wasmtime::Store;
 
 use crate::{
@@ -100,7 +100,8 @@ fn spawn_player(
     // TODO if this fails, the character should immediately be booted out (file deleted) to
     // guarantee stability
     let name = wasm_name(&mut store, &instance)?;
-    info!("{} has entered the game!", name);
+    let team_name = wasm_team_name(&mut store, &instance)?;
+    info!("{} from team {} has entered the game!", name, team_name);
     commands
         .spawn()
         .insert(Player)

@@ -5,6 +5,20 @@ use syn::{parse_macro_input, Ident, ImplItem, ImplItemMethod, ItemImpl, ReturnTy
 
 const BUFFER_SIZE_BYTES: usize = 10_000;
 
+struct MethodData {
+    method_identifier: Ident,
+    shim_identifier: Ident,
+    takes_self: bool,
+    has_output: bool
+}
+
+struct SignatureData {
+    argument_identifiers: Vec<Ident>,
+    pointer_identifiers: Vec<Ident>,
+    length_identifiers: Vec<Ident>,
+    slice_identifiers: Vec<Ident>,
+}
+
 pub fn implementation(input: TokenStream) -> TokenStream {
     let trait_impl_block = parse_macro_input!(input as ItemImpl);
     let methods: Vec<_> = trait_impl_block
@@ -29,7 +43,7 @@ pub fn implementation(input: TokenStream) -> TokenStream {
         #[no_mangle]
         fn __wasm_get_buffer_address() -> i32 { unsafe { __WASM_BUFFER.as_ptr() as _ } }
         #[no_mangle]
-        fn __wasm_get_buffer_size() -> u32 { #BUFFER_SIZE_BYTES as _ }
+        fn __wasm_get_buffer_size() -> i32 { #BUFFER_SIZE_BYTES as _ }
     });
 
     for method in methods {
@@ -40,8 +54,8 @@ pub fn implementation(input: TokenStream) -> TokenStream {
 }
 
 fn build_shim(method: &ImplItemMethod, implementer: &Type) -> TokenStream {
-    let (method_identifier, shim_identifier, takes_self, has_output) = reflect_on_method(method);
-    let (argument_identifiers, pointer_identifiers, length_identifiers, slice_identifiers) =
+    let MethodData { method_identifier, shim_identifier, takes_self, has_output } = reflect_on_method(method);
+    let SignatureData { argument_identifiers, pointer_identifiers, length_identifiers, slice_identifiers } =
         reflect_on_signature(method);
 
     let shim_reconstruction = quote! {
@@ -87,7 +101,7 @@ fn build_shim(method: &ImplItemMethod, implementer: &Type) -> TokenStream {
 
 fn reflect_on_signature(
     method: &ImplItemMethod,
-) -> (Vec<Ident>, Vec<Ident>, Vec<Ident>, Vec<Ident>) {
+) -> SignatureData {
     let inputs: Vec<_> = method.sig.inputs.iter().collect();
     let non_self_input_types = inputs.iter().filter_map(|i| match i {
         syn::FnArg::Typed(t) => Some(t),
@@ -101,15 +115,15 @@ fn reflect_on_signature(
     let length_identifiers: Vec<_> =
         indices.clone().map(|i| format_ident!("argument_length_{}", i)).collect();
     let slice_identifiers = indices.map(|i| format_ident!("argument_slice_{}", i)).collect();
-    (argument_identifiers, pointer_identifiers, length_identifiers, slice_identifiers)
+    SignatureData{ argument_identifiers, pointer_identifiers, length_identifiers, slice_identifiers }
 }
 
-fn reflect_on_method(method: &ImplItemMethod) -> (Ident, Ident, bool, bool) {
+fn reflect_on_method(method: &ImplItemMethod) -> MethodData {
     let method_identifier = method.sig.ident.clone();
     let shim_identifier = format_ident!("__wasm_shim_{}", method.sig.ident);
     let takes_self = method.sig.inputs.iter().any(|i| matches!(i, syn::FnArg::Receiver(_)));
     let has_output = matches!(method.sig.output, ReturnType::Type(..));
-    (method_identifier, shim_identifier, takes_self, has_output)
+    MethodData { method_identifier, shim_identifier, takes_self, has_output }
 }
 
 fn inner_invocation(

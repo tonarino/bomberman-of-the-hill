@@ -22,4 +22,8 @@ impl Player for Fool {
     fn name(&self) -> String {
         "Mr North".into()
     }
+
+    fn team_name() -> String {
+        "Northward".into()
+    }
 }

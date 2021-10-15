@@ -38,13 +38,13 @@ impl Direction {
 
 impl TileOffset {
     /// Whether the position represents a tile adjacent to the origin.
-    pub fn adjacent(&self) -> bool {
+    pub fn is_adjacent(&self) -> bool {
         self.0.abs() <= 1 && self.1.abs() <= 1
     }
 
     /// Whether the position represents a tile orthogonally adjacent
     /// to the origin (no diagonals)
-    pub fn orthogonally_adjacent(&self) -> bool {
+    pub fn is_orthogonally_adjacent(&self) -> bool {
         (self.0.abs() == 1 && self.1 == 0) || (self.0 == 0 && self.1.abs() == 1)
     }
 }
