@@ -57,10 +57,6 @@ impl TileOffset {
         (self.0.abs() + self.1.abs()) as u32
     }
 
-    pub fn euclidean_distance(&self) -> f32 {
-        ((self.0.pow(2) + self.1.pow(2)) as f32).sqrt()
-    }
-
     pub fn chebyshev_distance(&self) -> u32 {
         self.0.abs().max(self.1.abs()) as u32
     }
@@ -100,6 +96,5 @@ mod tests {
 
         assert_eq!(offset.taxicab_distance(), 7);
         assert_eq!(offset.chebyshev_distance(), 4);
-        assert_eq!(offset.euclidean_distance(), 5.0);
     }
 }
