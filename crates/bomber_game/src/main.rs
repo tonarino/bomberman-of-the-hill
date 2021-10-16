@@ -1,4 +1,3 @@
-#![feature(type_alias_impl_trait)]
 use anyhow::Result;
 use bevy::prelude::*;
 use player_hotswap::PlayerHotswapPlugin;
