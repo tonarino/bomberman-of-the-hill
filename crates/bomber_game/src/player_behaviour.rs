@@ -1,6 +1,9 @@
 //! Defines a Bevy plugin that governs spawning and despawning players from .wasm handles,
 //! as well as the continuous behaviour of players as they exist in the game world.
 
+// Disabling lint for the module because of the ubiquitous Bevy queries.
+#![allow(clippy::type_complexity)]
+
 use anyhow::{anyhow, Result};
 use bevy::prelude::*;
 use bomber_lib::{
@@ -159,6 +162,8 @@ fn spawn_player(
     Ok(())
 }
 
+/// Each frame, matches the player world coordinates to their abstract position
+/// in the game world.
 fn player_positioning_system(
     game_map_query: Query<&GameMap>,
     mut player_query: Query<(&mut Transform, &TileLocation), With<Player>>,
@@ -172,9 +177,8 @@ fn player_positioning_system(
 }
 
 /// Every universal tick, queries all players for their desired action and applies
-/// it. At the moment this only results in movement (or death) but will likely expand
-/// into more complex actions.
-#[allow(clippy::type_complexity)]
+/// it. At the moment this only results in movement but will likely expand into more
+/// complex actions.
 fn player_action_system(
     time: Res<Time>,
     mut timer_query: Query<&mut Timer, With<PlayerTimer>>,
@@ -188,20 +192,14 @@ fn player_action_system(
     let mut timer = timer_query.single_mut().unwrap();
     if timer.tick(time.delta()).just_finished() {
         for (mut location, mut store, instance, player_name) in player_query.iter_mut() {
-            let action = wasm_player_action(
-                &mut store,
-                instance,
-                &location,
-                tile_query.iter(),
-                object_query.iter(),
-            )?;
-            if let Err(e) = apply_action(
-                action,
-                player_name,
-                tile_query.iter(),
-                object_query.iter(),
-                &mut location,
-            ) {
+            let action =
+                wasm_player_action(&mut store, instance, &location, &tile_query, &object_query)?;
+            if let Err(e) =
+                apply_action(action, player_name, &tile_query, &object_query, &mut location)
+            {
+                // We downgrade this error to informative as the player is allowed
+                // to attempt impossible things like walking into a wall (We can later
+                // animate these).
                 info!("{}", e);
             }
         }
@@ -210,16 +208,16 @@ fn player_action_system(
 }
 
 /// Applies the action chosen by a player, causing an impact on the world or itself.
-fn apply_action<'a>(
+fn apply_action(
     action: Action,
     player_name: &str,
-    tiles: impl Iterator<Item = (&'a TileLocation, &'a Tile)>,
-    objects: impl Iterator<Item = (&'a TileLocation, &'a Object)>,
+    tile_query: &Query<(&TileLocation, &Tile), (Without<Player>, Without<Object>)>,
+    object_query: &Query<(&TileLocation, &Object), (Without<Player>, Without<Tile>)>,
     player_location: &mut TileLocation,
 ) -> Result<()> {
     match action {
         Action::Move(direction) => {
-            move_player(player_name, player_location, direction, tiles, objects)
+            move_player(player_name, player_location, direction, tile_query, object_query)
         },
         Action::StayStill => {
             info!("{} decides to stay still at {:?}", player_name, player_location);
@@ -228,20 +226,21 @@ fn apply_action<'a>(
     }
 }
 
-fn move_player<'a>(
+fn move_player(
     player_name: &str,
     player_location: &mut TileLocation,
     direction: Direction,
-    mut tiles: impl Iterator<Item = (&'a TileLocation, &'a Tile)>,
-    objects: impl Iterator<Item = (&'a TileLocation, &'a Object)>,
+    tile_query: &Query<(&TileLocation, &Tile), (Without<Player>, Without<Object>)>,
+    object_query: &Query<(&TileLocation, &Object), (Without<Player>, Without<Tile>)>,
 ) -> Result<()> {
     let target_location = (*player_location + direction)
         .ok_or_else(|| anyhow!("Invalid target location ({})", player_name))?;
-    let target_tile = tiles
+    let target_tile = tile_query
+        .iter()
         .find_map(|(l, t)| (*l == target_location).then(|| t))
         .ok_or_else(|| anyhow!("No tile at target location ({})", player_name))?;
     let objects_on_target_tile =
-        objects.filter_map(|(l, o)| (*l == target_location).then(|| o)).count();
+        object_query.iter().filter_map(|(l, o)| (*l == target_location).then(|| o)).count();
 
     match target_tile {
         Tile::EmptyFloor | Tile::Hill if objects_on_target_tile == 0 => {
@@ -254,19 +253,18 @@ fn move_player<'a>(
 }
 
 /// Executes the `.wasm` export to get the player's decision given its current surroundings.
-fn wasm_player_action<'a>(
+fn wasm_player_action(
     store: &mut wasmtime::Store<()>,
     instance: &wasmtime::Instance,
     player_location: &TileLocation,
-    tiles: impl Iterator<Item = (&'a TileLocation, &'a Tile)>,
-    objects: impl Iterator<Item = (&'a TileLocation, &'a Object)>,
+    tile_query: &Query<(&TileLocation, &Tile), (Without<Player>, Without<Object>)>,
+    object_query: &Query<(&TileLocation, &Object), (Without<Player>, Without<Tile>)>,
 ) -> Result<Action> {
     let last_result = LastTurnResult::StoodStill; // TODO close the LastTurnResult loop.
-    let objects: Vec<_> = objects.collect();
-    let player_surroundings: Vec<(Tile, Option<Object>, TileOffset)> = tiles
+    let player_surroundings: Vec<(Tile, Option<Object>, TileOffset)> = tile_query
+        .iter()
         .filter_map(|(location, tile)| {
-            let object_on_tile =
-                objects.iter().cloned().find_map(|(l, o)| (l == location).then(|| *o));
+            let object_on_tile = object_query.iter().find_map(|(l, o)| (l == location).then(|| *o));
             ((*location - *player_location).taxicab_distance() <= PLAYER_VIEW_TAXICAB_DISTANCE)
                 .then(|| (*tile, object_on_tile, (*location - *player_location)))
         })

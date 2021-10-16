@@ -18,6 +18,7 @@ use crate::{
 pub const CRATE_HEAVY_CROSS_ARENA_SMALL: &str =
     include_str!("../assets/maps/crate_heavy_cross_arena_small.txt");
 
+/// Activating this plugin automatically spawns a game map on startup.
 pub struct GameMapPlugin;
 
 #[derive(Copy, Clone, Debug)]
@@ -25,6 +26,9 @@ pub struct GameMap {
     width: usize,
     height: usize,
 }
+
+/// Spawners (represented with a `s` in textual form) designate the tiles in
+/// which player characters can appear.
 #[derive(Copy, Clone, Debug)]
 pub struct PlayerSpawner;
 
