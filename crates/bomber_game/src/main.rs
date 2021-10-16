@@ -47,6 +47,3 @@ fn downgrade_error(In(result): In<Result<()>>) {
         info!("Downgraded error: {}", e);
     }
 }
-
-// General purpose newtype
-pub(crate) struct Wrapper<T>(pub T);

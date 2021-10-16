@@ -1,7 +1,4 @@
-use std::{
-    convert::{TryFrom, TryInto},
-    ops::{Add, Sub},
-};
+use std::ops::{Add, Sub};
 
 use anyhow::{anyhow, Result};
 use bevy::prelude::*;
@@ -11,7 +8,6 @@ use rand::Rng;
 use crate::{
     log_unrecoverable_error_and_panic,
     rendering::{GAME_MAP_Z, GAME_OBJECT_Z, TILE_HEIGHT_PX, TILE_WIDTH_PX},
-    Wrapper,
 };
 
 /// comfortable for 8 players, many starting crates, open hill in the center.
@@ -240,8 +236,9 @@ fn object_from_char(character: char) -> Option<Object> {
     match character {
         'c' | 'C' => Some(Object::Crate),
         // Numbers in the map text represent a chance for a crate to spawn.
-        p @ '1'..='9' => (p.to_digit(10).unwrap() >= rand::thread_rng().gen_range(1..=10))
-            .then(|| Object::Crate),
+        p @ '1'..='9' => {
+            (p.to_digit(10).unwrap() >= rand::thread_rng().gen_range(1..=10)).then(|| Object::Crate)
+        },
         _ => None,
     }
 }
