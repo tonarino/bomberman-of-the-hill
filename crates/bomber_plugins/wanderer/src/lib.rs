@@ -31,12 +31,12 @@ impl Player for Wanderer {
         let preferred_tile = surroundings.iter().find_map(|(t, o, p)| {
             (o.is_none() && (*p == self.preferred_direction.extend(1))).then(|| t)
         });
-        if matches!(preferred_tile, Some(Tile::EmptyFloor)) {
+        if matches!(preferred_tile, Some(Tile::Floor)) {
             Action::Move(Direction::North)
         } else {
             surroundings
                 .iter()
-                .filter(|(t, o, p)| o.is_none() && p.is_adjacent() && matches!(t, Tile::EmptyFloor))
+                .filter(|(t, o, p)| o.is_none() && p.is_adjacent() && matches!(t, Tile::Floor))
                 .find_map(|(_, _, p)| Direction::try_from(*p).map(Action::Move).ok())
                 .unwrap_or(Action::StayStill)
         }

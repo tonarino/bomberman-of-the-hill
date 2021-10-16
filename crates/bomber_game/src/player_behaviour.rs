@@ -243,7 +243,7 @@ fn move_player(
         object_query.iter().filter_map(|(l, o)| (*l == target_location).then(|| o)).count();
 
     match target_tile {
-        Tile::EmptyFloor | Tile::Hill if objects_on_target_tile == 0 => {
+        Tile::Floor | Tile::Hill if objects_on_target_tile == 0 => {
             info!("{} moves to {:?}", player_name, target_location);
             *player_location = target_location;
             Ok(())

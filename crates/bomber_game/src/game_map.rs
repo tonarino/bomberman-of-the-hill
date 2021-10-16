@@ -81,7 +81,8 @@ impl GameMap {
         let lines: Vec<&str> = text.lines().rev().collect();
         if lines.windows(2).any(|w| w[0].len() != w[1].len()) {
             return Err(anyhow!("Mismatched row sizes in the game map"));
-        } else if lines.is_empty() || lines[0].is_empty() {
+        }
+        if lines.is_empty() || lines[0].is_empty() {
             return Err(anyhow!("Game map must have at least a row and a column"));
         }
         let game_map = GameMap { width: lines[0].len(), height: lines.len() };
@@ -113,12 +114,12 @@ impl GameMap {
         textures: &Textures,
         materials: &mut Assets<ColorMaterial>,
     ) {
-        let Wrapper::<Tile>(tile) = character.into();
+        let tile = tile_from_char(character);
         Self::spawn_tile(parent, game_map, tile, location, textures, materials);
-        if let Ok(Wrapper::<Object>(object)) = character.try_into() {
+        if let Some(object) = object_from_char(character) {
             Self::spawn_object(parent, game_map, object, location, textures, materials);
         }
-        if let Ok(spawner) = PlayerSpawner::try_from(character) {
+        if let Some(spawner) = spawner_from_char(character) {
             parent.spawn().insert(spawner).insert(location);
         }
     }
@@ -133,7 +134,7 @@ impl GameMap {
     ) {
         let texture = match tile {
             Tile::Wall => &textures.wall,
-            Tile::EmptyFloor => &textures.floor,
+            Tile::Floor => &textures.floor,
             Tile::Hill => &textures.hill,
         };
         parent.spawn().insert(tile).insert(location).insert_bundle(SpriteBundle {
@@ -223,39 +224,29 @@ impl Sub<TileLocation> for TileLocation {
     }
 }
 
-impl From<char> for Wrapper<Tile> {
-    fn from(character: char) -> Self {
-        match character {
-            '#' => Wrapper(Tile::Wall),
-            '~' | 'C' => Wrapper(Tile::Hill),
-            _ => Wrapper(Tile::EmptyFloor),
-        }
+// Implemented as a standalone function to bypass the orphan rule, as the tiles
+// to convert to are defined in the `hero_lib` crate, which must be kept clean for
+// the players
+fn tile_from_char(character: char) -> Tile {
+    match character {
+        '#' => Tile::Wall,
+        '~' | 'C' => Tile::Hill,
+        _ => Tile::Floor,
     }
 }
 
-impl TryFrom<char> for Wrapper<Object> {
-    type Error = anyhow::Error;
-
-    fn try_from(character: char) -> Result<Self, Self::Error> {
-        match character {
-            'c' | 'C' => Ok(Wrapper(Object::Crate)),
-            // Numbers in the map text represent a chance for a crate to spawn.
-            p @ '1'..='9' => (p.to_digit(10).unwrap() >= rand::thread_rng().gen_range(1..=10))
-                .then(|| Wrapper(Object::Crate))
-                .ok_or_else(|| anyhow!("Random crate roll failed")),
-            _ => Err(anyhow!("Character does not correspond to an object or an object chance")),
-        }
+// Implemented as a standalone function for the same reason as `tile_from_char`
+fn object_from_char(character: char) -> Option<Object> {
+    match character {
+        'c' | 'C' => Some(Object::Crate),
+        // Numbers in the map text represent a chance for a crate to spawn.
+        p @ '1'..='9' => (p.to_digit(10).unwrap() >= rand::thread_rng().gen_range(1..=10))
+            .then(|| Object::Crate),
+        _ => None,
     }
 }
 
-impl TryFrom<char> for PlayerSpawner {
-    type Error = anyhow::Error;
-
-    fn try_from(character: char) -> Result<Self, Self::Error> {
-        if character == 's' {
-            Ok(PlayerSpawner)
-        } else {
-            Err(anyhow!("Character does not correspond to a spawner"))
-        }
-    }
+// Implemented as a standalone function for the same reason as `tile_from_char`
+fn spawner_from_char(character: char) -> Option<PlayerSpawner> {
+    (character == 's').then(|| PlayerSpawner)
 }

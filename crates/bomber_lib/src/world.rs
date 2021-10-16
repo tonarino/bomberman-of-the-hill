@@ -14,7 +14,7 @@ pub enum Direction {
 #[derive(EnumIter, Copy, Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub enum Tile {
     Wall,
-    EmptyFloor,
+    Floor,
     Hill,
 }
 
