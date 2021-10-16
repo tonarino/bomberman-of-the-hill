@@ -1,34 +1,52 @@
+use std::convert::TryFrom;
+
 use bomber_lib::{
     self,
-    world::{Direction, Tile, World},
-    Action, Player,
+    world::{Direction, Tile},
+    Action, LastTurnResult, Player,
 };
-use bomber_macro::wasm_player;
-use strum::IntoEnumIterator;
+use bomber_macro::wasm_export;
 
-/// To build a `wasm player`, all that's needed is to implement the
-/// `Player` trait, which defines how the player interacts with the
-/// world, and to mark the struct with the `wasm_player` attribute,
-/// which exposes the `wasm` exports the game expects to hot-swap
-/// the player in.
-#[wasm_player]
 struct Wanderer {
     preferred_direction: Direction,
 }
 
-impl Player for Wanderer {
-    fn spawn() -> Self {
+impl Default for Wanderer {
+    fn default() -> Self {
         Self { preferred_direction: Direction::North }
     }
+}
 
-    fn act(&mut self, world: &impl World) -> Action {
+/// The `Player` implementation block must be decorated with `wasm_export`
+/// in order to export the right shims to interface with the bevy `wasm` runtime
+#[wasm_export]
+impl Player for Wanderer {
+    fn act(
+        &mut self,
+        surroundings: Vec<(Tile, bomber_lib::world::TileOffset)>,
+        _last_result: LastTurnResult,
+    ) -> Action {
         // A wanderer walks to their preferred direction if it's free.
         // If it isn't, they  walk to the first free tile they inspect.
-        let tile_is_free = |d: &Direction| world.inspect(*d) == Tile::EmptyFloor;
-        if tile_is_free(&self.preferred_direction) {
-            Action::Move(self.preferred_direction)
+        let preferred_tile = surroundings
+            .iter()
+            .find_map(|(t, p)| (*p == self.preferred_direction.extend(1)).then(|| t));
+        if matches!(preferred_tile, Some(Tile::EmptyFloor)) {
+            Action::Move(Direction::North)
         } else {
-            Direction::iter().find(tile_is_free).map(Action::Move).unwrap_or(Action::StayStill)
+            surroundings
+                .iter()
+                .filter(|(t, p)| p.is_adjacent() && matches!(t, Tile::EmptyFloor))
+                .find_map(|(_, p)| Direction::try_from(*p).map(Action::Move).ok())
+                .unwrap_or(Action::StayStill)
         }
+    }
+
+    fn name(&self) -> String {
+        "Wanderman".into()
+    }
+
+    fn team_name() -> String {
+        "The Nomads".into()
     }
 }

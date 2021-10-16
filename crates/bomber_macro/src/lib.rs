@@ -1,37 +1,22 @@
 use proc_macro::TokenStream;
-use quote::quote;
-use syn::{parse_macro_input, ItemStruct};
 
-/// When applied to a custom struct that implements the `Player` trait, exposes
-/// a set of `wasm` friendly imports and exports, allowing the compiled crate
-/// to be used as a player.
+mod wasm_export;
+mod wasm_wrap;
+
+/// `wasm_export` must decorate the `impl` block for the trait
+/// used as a `wasm` interface, at which point it will generate shims
+/// for each of the methods, delegating to a singleton for the methods
+/// with a Self receiver.
 #[proc_macro_attribute]
-pub fn wasm_player(_: TokenStream, input: TokenStream) -> TokenStream {
-    let player_struct = parse_macro_input!(input as ItemStruct);
-    let player_identifier = player_struct.ident.clone();
+pub fn wasm_export(_: TokenStream, input: TokenStream) -> TokenStream {
+    wasm_export::implementation(input)
+}
 
-    let expanded = quote! {
-        #player_struct
-
-        lazy_static::lazy_static! {
-            static ref __PLAYER: std::sync::Mutex<#player_identifier> = std::sync::Mutex::new(#player_identifier::spawn());
-        }
-
-        struct __WorldShim;
-
-        impl World for __WorldShim {
-            fn inspect(&self, direction: Direction) -> Tile {
-                unsafe { __inspect(direction as u32).into() }
-            }
-        }
-
-        #[no_mangle]
-        pub fn __act() -> u32 {
-            __PLAYER.lock().unwrap().act(&__WorldShim).into()
-        }
-
-        extern { fn __inspect(direction_raw: u32) -> u32; }
-    };
-
-    proc_macro::TokenStream::from(expanded)
+/// `wasm_wrap` must decorate the trait definition for the trait used
+/// as a `wasm` interface. This will generate accesor helper functions
+/// to interact with the wasm module without the need for manual type
+/// conversions.
+#[proc_macro_attribute]
+pub fn wasm_wrap(_: TokenStream, input: TokenStream) -> TokenStream {
+    wasm_wrap::implementation(input)
 }

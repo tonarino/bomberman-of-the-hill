@@ -1,7 +1,7 @@
 use anyhow::Result;
 use bevy::prelude::*;
 use player_hotswap::PlayerHotswapPlugin;
-use std::{str::FromStr, sync::Arc};
+use std::str::FromStr;
 
 use game_map::GameMap;
 use player_behaviour::PlayerBehaviourPlugin;
@@ -15,7 +15,7 @@ mod rendering;
 fn main() -> Result<()> {
     let game_map = GameMap::from_str(game_map::DANGEROUS)?;
     App::build()
-        .insert_resource(Arc::new(game_map))
+        .insert_resource(game_map)
         .add_plugins_with(DefaultPlugins, |group| group.disable::<bevy::audio::AudioPlugin>())
         .add_plugin(PlayerBehaviourPlugin)
         .add_plugin(PlayerHotswapPlugin)
@@ -27,7 +27,7 @@ fn main() -> Result<()> {
 fn setup(
     mut commands: Commands,
     mut materials: ResMut<Assets<ColorMaterial>>,
-    game_map: Res<Arc<GameMap>>,
+    game_map: Res<GameMap>,
 ) {
     commands.spawn_bundle(OrthographicCameraBundle::new_2d());
     commands.spawn_bundle(UiCameraBundle::default());

@@ -1,38 +1,21 @@
 //! Defines a Bevy plugin that governs spawning and despawning players from .wasm handles,
 //! as well as the continuous behaviour of players as they exist in the game world.
-use std::sync::Arc;
 
 use anyhow::{anyhow, Result};
 use bevy::prelude::*;
-use bomber_lib::Action;
-use wasmtime::{Caller, Func, Store};
+use bomber_lib::{wasm_act, wasm_name, wasm_team_name, Action, LastTurnResult};
+use wasmtime::Store;
 
 use crate::{
     error_sink,
-    game_map::{self, GameMap, INITIAL_LOCATION},
+    game_map::{self, GameMap, TileLocation, INITIAL_LOCATION},
     player_hotswap::{PlayerHandles, WasmPlayerAsset},
     rendering::{GAME_MAP_Z, TILE_WIDTH_PX},
 };
 
 pub struct PlayerBehaviourPlugin;
-
-/// The `Player` struct is composed of player state (both internal and external
-/// to the `wasm` environment, a compiled, live `wasm` instance, and a handle
-/// to its associated filesystem asset to regulate spawning and despawning.
-struct Player {
-    store: wasmtime::Store<PlayerStoreData>,
-    instance: wasmtime::Instance,
-    handle: Handle<WasmPlayerAsset>,
-}
-
-/// Contains all state relevant to the wasm player module. This is data that the
-/// player can't access directly from its own context, but that the game needs to track
-/// in relation to that player.
-struct PlayerStoreData {
-    location: game_map::Location,
-    game_map: Arc<GameMap>,
-}
-
+/// Marks a player
+struct Player;
 /// Marks the timer used to sequence all player actions (the universal tick)
 struct PlayerTimer;
 /// Marks the skull sprite used to signal a player death for a few seconds
@@ -59,22 +42,22 @@ fn setup(mut commands: Commands) {
 fn player_spawn_system(
     mut commands: Commands,
     handles: Res<PlayerHandles>,
-    players: Query<(Entity, &Player)>,
-    game_map: Res<Arc<GameMap>>,
+    players: Query<(Entity, &Handle<WasmPlayerAsset>), With<Player>>,
+    game_map: Res<GameMap>,
     engine: Res<wasmtime::Engine>,
     asset_server: Res<AssetServer>,
     assets: Res<Assets<WasmPlayerAsset>>,
     mut materials: ResMut<Assets<ColorMaterial>>,
 ) {
     // Despawn all excess players (if the wasm file was unloaded)
-    for (entity, player) in players.iter() {
-        if handles.0.iter().all(|handle| handle.id != player.handle.id) {
+    for (entity, handle) in players.iter() {
+        if handles.0.iter().all(|h| h.id != handle.id) {
             commands.entity(entity).despawn_recursive();
         }
     }
     // Spawn all missing players (if the wasm file was just loaded)
     for handle in handles.0.iter() {
-        if players.iter().all(|(_, player)| player.handle.id != handle.id) {
+        if players.iter().all(|(_, h)| h.id != handle.id) {
             spawn_player(
                 handle.clone(),
                 &game_map,
@@ -94,31 +77,15 @@ fn player_spawn_system(
 /// get a "callback" into the world to use as they remain alive.
 fn spawn_player(
     handle: Handle<WasmPlayerAsset>,
-    game_map: &Arc<GameMap>,
+    game_map: &GameMap,
     engine: &wasmtime::Engine,
     asset_server: &AssetServer,
     assets: &Assets<WasmPlayerAsset>,
     commands: &mut Commands,
     materials: &mut Assets<ColorMaterial>,
 ) -> Result<(), anyhow::Error> {
-    let data = PlayerStoreData { location: INITIAL_LOCATION, game_map: game_map.clone() };
-
-    // The Store owns all player-adjacent data, whether it's internal to the wasm module
-    // or simply associated to the player (e.g. their position in the map)
-    let mut store = Store::new(engine, data);
-
-    // The import bindings allow a player to call back to the game world. Note there is a security
-    // implication here; a player may call this function at any time. Currently it only requires
-    // shared immutable access through an `Arc`, but if the need arises for mutable access we'll
-    // have to worry about metering and avoiding potential deadlocks.
-    let player_inspect_wasm_import =
-        Func::wrap(&mut store, |caller: Caller<'_, PlayerStoreData>, direction_raw: u32| -> u32 {
-            // Through the `caller` struct, the `wasm` instance is able to
-            // access game state by retrieving a `PlayerStoreData` object.
-            let data = caller.data();
-            data.game_map.inspect_from(data.location, direction_raw.into()) as u32
-        });
-
+    // The Store owns all player-adjacent data internal to the wasm module
+    let mut store = Store::new(engine, ());
     let wasm_bytes = assets
         .get(&handle)
         .ok_or_else(|| anyhow!("Wasm asset not found at runtime"))?
@@ -127,30 +94,41 @@ fn spawn_player(
 
     // Here the raw `wasm` is JIT compiled into a stateless module.
     let module = wasmtime::Module::new(engine, wasm_bytes)?;
-    let imports = &[player_inspect_wasm_import.into()];
-    // Here the module is bound to a store and a set of imports to form a stateful instance.
-    let instance = wasmtime::Instance::new(&mut store, &module, imports)?;
-    let player = Player { store, instance, handle };
+    // Here the module is bound to a store.
+    let instance = wasmtime::Instance::new(&mut store, &module, &[])?;
     let texture_handle = asset_server.load("graphics/player.png");
-    commands.spawn().insert(player).insert(module).insert_bundle(SpriteBundle {
-        material: materials.add(texture_handle.into()),
-        transform: Transform::from_translation(
-            INITIAL_LOCATION.as_pixels(game_map, GAME_MAP_Z + 1.0),
-        ),
-        sprite: Sprite::new(Vec2::splat(TILE_WIDTH_PX)),
-        ..Default::default()
-    });
+    // TODO if this fails, the character should immediately be booted out (file deleted) to
+    // guarantee stability
+    let name = wasm_name(&mut store, &instance)?;
+    let team_name = wasm_team_name(&mut store, &instance)?;
+    info!("{} from team {} has entered the game!", name, team_name);
+    commands
+        .spawn()
+        .insert(Player)
+        .insert(instance)
+        .insert(store)
+        .insert(INITIAL_LOCATION)
+        .insert(handle)
+        .insert(name)
+        .insert_bundle(SpriteBundle {
+            material: materials.add(texture_handle.into()),
+            transform: Transform::from_translation(
+                INITIAL_LOCATION.as_pixels(game_map, GAME_MAP_Z + 1.0),
+            ),
+            sprite: Sprite::new(Vec2::splat(TILE_WIDTH_PX)),
+            ..Default::default()
+        });
     Ok(())
 }
 
 /// Continuously updates the player transform to match its abstract location
 /// in the game_map.
 fn player_positioning_system(
-    game_map: Res<Arc<GameMap>>,
-    mut players: Query<(&mut Transform, &Player)>,
+    game_map: Res<GameMap>,
+    mut players: Query<(&mut Transform, &TileLocation), With<Player>>,
 ) {
-    for (mut transform, player) in players.iter_mut() {
-        transform.translation = player.store.data().location.as_pixels(&game_map, GAME_MAP_Z + 1.0);
+    for (mut transform, location) in players.iter_mut() {
+        transform.translation = location.as_pixels(&game_map, GAME_MAP_Z + 1.0);
     }
 }
 
@@ -160,22 +138,25 @@ fn player_positioning_system(
 fn player_movement_system(
     time: Res<Time>,
     mut timer_query: Query<&mut Timer, With<PlayerTimer>>,
-    mut player_query: Query<(Entity, &mut Player)>,
-    game_map: Res<Arc<GameMap>>,
+    mut player_query: Query<
+        (Entity, &mut TileLocation, &mut wasmtime::Store<()>, &wasmtime::Instance),
+        With<Player>,
+    >,
+    game_map: Res<GameMap>,
     asset_server: Res<AssetServer>,
     mut materials: ResMut<Assets<ColorMaterial>>,
     mut commands: Commands,
 ) -> Result<()> {
     let mut timer = timer_query.single_mut().unwrap();
     if timer.tick(time.delta()).just_finished() {
-        for (entity, mut player) in player_query.iter_mut() {
-            let action = wasm_player_action(&mut player);
+        for (entity, mut location, mut store, instance) in player_query.iter_mut() {
+            let action = wasm_player_action(&mut store, instance, &location, &game_map);
             apply_action(
                 &mut commands,
                 &asset_server,
                 &mut materials,
                 action?,
-                &mut player,
+                &mut location,
                 &game_map,
                 entity,
             );
@@ -190,15 +171,13 @@ fn apply_action(
     asset_server: &AssetServer,
     materials: &mut Assets<ColorMaterial>,
     action: Action,
-    player: &mut Player,
-    game_map: &Arc<GameMap>,
+    location: &mut TileLocation,
+    game_map: &GameMap,
     player_entity: Entity,
 ) {
     let new_location = match action {
-        Action::Move(direction) => {
-            (player.store.data().location + direction).unwrap_or(player.store.data().location)
-        },
-        Action::StayStill => player.store.data().location,
+        Action::Move(direction) => (*location + direction).unwrap_or(*location),
+        Action::StayStill => *location,
     };
 
     match game_map.tile(new_location) {
@@ -207,7 +186,7 @@ fn apply_action(
         },
         Some(bomber_lib::world::Tile::EmptyFloor) => {
             info!("A player ({:?}) walks into {:?}", player_entity, new_location);
-            player.store.data_mut().location = new_location;
+            *location = new_location;
         },
         Some(bomber_lib::world::Tile::Switch) => {
             info!("A player ({:?}) presses a switch at {:?}", player_entity, new_location)
@@ -232,8 +211,8 @@ fn kill_player(
     asset_server: &AssetServer,
     materials: &mut Assets<ColorMaterial>,
     player_entity: Entity,
-    new_location: game_map::Location,
-    game_map: &Arc<GameMap>,
+    new_location: game_map::TileLocation,
+    game_map: &GameMap,
 ) {
     let texture_handle = asset_server.load("graphics/death.png");
     commands.entity(player_entity).despawn_recursive();
@@ -264,7 +243,13 @@ fn death_marker_cleanup_system(
 }
 
 /// Executes the `.wasm` export to get the player's decision given its current surroundings.
-fn wasm_player_action(player: &mut Player) -> Result<Action> {
-    let act = player.instance.get_typed_func::<(), u32, _>(&mut player.store, "__act")?;
-    Ok(Action::from(act.call(&mut player.store, ())?))
+fn wasm_player_action(
+    store: &mut wasmtime::Store<()>,
+    instance: &wasmtime::Instance,
+    location: &TileLocation,
+    game_map: &GameMap,
+) -> Result<Action> {
+    let last_result = LastTurnResult::StoodStill; // TODO close the LastTurnResult loop.
+    let tiles = game_map.tiles_surrounding_location(*location);
+    wasm_act(store, instance, tiles, last_result)
 }

@@ -1,11 +1,16 @@
-use std::{convert::TryFrom, ops::Add, str::FromStr};
+use std::{
+    array::IntoIter,
+    convert::TryFrom,
+    ops::{Add, Sub},
+    str::FromStr,
+};
 
 use anyhow::{anyhow, Result};
-use bomber_lib::world::{Direction, Tile};
+use bomber_lib::world::{Direction, Tile, TileOffset};
 
 use crate::Wrapper;
 
-pub const INITIAL_LOCATION: Location = Location(4, 0);
+pub const INITIAL_LOCATION: TileLocation = TileLocation(4, 0);
 
 #[allow(unused)]
 #[rustfmt::skip]
@@ -33,25 +38,48 @@ pub struct GameMap {
     tiles: Vec<Vec<Tile>>,
 }
 
-#[derive(Copy, Clone, Debug, Eq, PartialEq)]
-pub struct Location(pub usize, pub usize);
+impl GameMap {
+    pub fn tiles_surrounding_location(&self, location: TileLocation) -> Vec<(Tile, TileOffset)> {
+        // TODO do more than the adjacent orthogonals, and do it programatically
+        IntoIter::new([(-1i32, 0i32), (1, 0), (0, 1), (0, -1)])
+            .filter_map(|(x, y)| {
+                self.tile(location + TileOffset(x, y)).map(|t| (t, TileOffset(x, y)))
+            })
+            .collect()
+    }
+}
 
-impl Add<Direction> for Location {
-    type Output = Option<Location>;
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+pub struct TileLocation(pub usize, pub usize);
+
+impl Add<Direction> for TileLocation {
+    type Output = Option<TileLocation>;
 
     fn add(self, rhs: Direction) -> Self::Output {
         match rhs {
-            Direction::West | Direction::NorthWest | Direction::SouthWest if self.0 == 0 => None,
-            Direction::South | Direction::SouthWest | Direction::SouthEast if self.1 == 0 => None,
-            Direction::West => Some(Location(self.0 - 1, self.1)),
-            Direction::NorthWest => Some(Location(self.0 - 1, self.1 + 1)),
-            Direction::North => Some(Location(self.0, self.1 + 1)),
-            Direction::NorthEast => Some(Location(self.0 + 1, self.1 + 1)),
-            Direction::East => Some(Location(self.0 + 1, self.1)),
-            Direction::SouthEast => Some(Location(self.0 + 1, self.1 - 1)),
-            Direction::South => Some(Location(self.0, self.1 - 1)),
-            Direction::SouthWest => Some(Location(self.0 - 1, self.1 - 1)),
+            Direction::West if self.0 == 0 => None,
+            Direction::South if self.1 == 0 => None,
+            Direction::West => Some(TileLocation(self.0 - 1, self.1)),
+            Direction::North => Some(TileLocation(self.0, self.1 + 1)),
+            Direction::East => Some(TileLocation(self.0 + 1, self.1)),
+            Direction::South => Some(TileLocation(self.0, self.1 - 1)),
         }
+    }
+}
+
+impl Add<TileOffset> for TileLocation {
+    type Output = TileLocation;
+
+    fn add(self, TileOffset(x, y): TileOffset) -> Self::Output {
+        Self((self.0 as i32 + x).max(0) as usize, (self.1 as i32 + y).max(0) as usize)
+    }
+}
+
+impl Sub<TileLocation> for TileLocation {
+    type Output = TileOffset;
+
+    fn sub(self, rhs: TileLocation) -> Self::Output {
+        TileOffset(self.0 as i32 - rhs.0 as i32, self.1 as i32 - rhs.1 as i32)
     }
 }
 
@@ -60,15 +88,8 @@ impl GameMap {
         (self.tiles[0].len(), self.tiles.len())
     }
 
-    pub fn tile(&self, location: Location) -> Option<Tile> {
+    pub fn tile(&self, location: TileLocation) -> Option<Tile> {
         self.tiles.get(location.1).and_then(|v| v.get(location.0)).cloned()
-    }
-
-    /// When inspecting, out of bound tiles are considered to be walls. This simplifies
-    /// the Wasm API for now, but it should probably be replaced as this matures (otherwise
-    /// we're treating the wall as a sentinel value, and we can do better in Rust...)
-    pub fn inspect_from(&self, location: Location, direction: Direction) -> Tile {
-        (location + direction).and_then(|p| self.tile(p)).unwrap_or(Tile::Wall)
     }
 }
 
@@ -122,10 +143,10 @@ mod tests {
              ####.###";
         let game_map = GameMap::from_str(game_map_text).unwrap();
         assert_eq!(game_map.size(), (8, 7));
-        assert_eq!(game_map.tile(Location(0, 0)).unwrap(), Tile::Wall);
-        assert_eq!(game_map.tile(Location(4, 0)).unwrap(), Tile::EmptyFloor);
-        assert_eq!(game_map.tile(Location(1, 1)).unwrap(), Tile::EmptyFloor);
-        assert_eq!(game_map.tile(Location(1, 2)).unwrap(), Tile::Lava);
-        assert_eq!(game_map.tile(Location(8, 8)), None);
+        assert_eq!(game_map.tile(TileLocation(0, 0)).unwrap(), Tile::Wall);
+        assert_eq!(game_map.tile(TileLocation(4, 0)).unwrap(), Tile::EmptyFloor);
+        assert_eq!(game_map.tile(TileLocation(1, 1)).unwrap(), Tile::EmptyFloor);
+        assert_eq!(game_map.tile(TileLocation(1, 2)).unwrap(), Tile::Lava);
+        assert_eq!(game_map.tile(TileLocation(8, 8)), None);
     }
 }

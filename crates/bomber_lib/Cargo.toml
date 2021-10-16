@@ -8,3 +8,11 @@ edition = "2018"
 [dependencies]
 strum = "0.21"
 strum_macros = "0.21"
+serde = { version = "1", features = ["derive"] }
+bincode = "1"
+bomber_macro = { path = "../bomber_macro" }
+
+[target.'cfg(not(target_family = "wasm"))'.dependencies]
+wasmtime = "0.30"
+anyhow = "1"
+
