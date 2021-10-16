@@ -5,12 +5,17 @@ use anyhow::{anyhow, Result};
 use bevy::prelude::*;
 use bomber_lib::{
     wasm_act, wasm_name, wasm_team_name,
-    world::{Direction, Object, Tile},
+    world::{Direction, Object, Tile, TileOffset},
     Action, LastTurnResult,
 };
 use wasmtime::Store;
 
-use crate::{game_map::{GameMap, PlayerSpawner, TileLocation}, log_recoverable_error, log_unrecoverable_error_and_panic, player_hotswap::{PlayerHandles, WasmPlayerAsset}, rendering::{PLAYER_HEIGHT_PX, PLAYER_VERTICAL_OFFSET_PX, PLAYER_WIDTH_PX, PLAYER_Z}};
+use crate::{
+    game_map::{GameMap, PlayerSpawner, TileLocation},
+    log_recoverable_error, log_unrecoverable_error_and_panic,
+    player_hotswap::{PlayerHandles, WasmPlayerAsset},
+    rendering::{PLAYER_HEIGHT_PX, PLAYER_VERTICAL_OFFSET_PX, PLAYER_WIDTH_PX, PLAYER_Z},
+};
 
 pub struct PlayerBehaviourPlugin;
 /// Marks a player
@@ -91,7 +96,7 @@ fn player_spawn_system(
         spawn_player(
             handle.clone(),
             *location,
-            &game_map,
+            game_map,
             &engine,
             &asset_server,
             &assets,
@@ -105,6 +110,7 @@ fn player_spawn_system(
 /// Loads the `.wasm` bytes, JIT compiles them and stores all player-related state
 /// in an entity. The import functions binding is done here, which means players effectively
 /// get a "callback" into the world to use as they remain alive.
+#[allow(clippy::too_many_arguments)]
 fn spawn_player(
     handle: Handle<WasmPlayerAsset>,
     location: TileLocation,
@@ -144,8 +150,8 @@ fn spawn_player(
         .insert_bundle(SpriteBundle {
             material: materials.add(texture_handle.into()),
             transform: Transform::from_translation(
-                location.to_world_coordinates(game_map).extend(PLAYER_Z)
-                + Vec3::new(0.0, PLAYER_VERTICAL_OFFSET_PX, 0.0)
+                location.as_world_coordinates(game_map).extend(PLAYER_Z)
+                    + Vec3::new(0.0, PLAYER_VERTICAL_OFFSET_PX, 0.0),
             ),
             sprite: Sprite::new(Vec2::new(PLAYER_WIDTH_PX, PLAYER_HEIGHT_PX)),
             ..Default::default()
@@ -159,8 +165,8 @@ fn player_positioning_system(
 ) -> Result<()> {
     let game_map = game_map_query.single()?;
     for (mut transform, location) in player_query.iter_mut() {
-        transform.translation = location.to_world_coordinates(game_map).extend(PLAYER_Z)
-                + Vec3::new(0.0, PLAYER_VERTICAL_OFFSET_PX, 0.0);
+        transform.translation = location.as_world_coordinates(game_map).extend(PLAYER_Z)
+            + Vec3::new(0.0, PLAYER_VERTICAL_OFFSET_PX, 0.0);
     }
     Ok(())
 }
@@ -168,6 +174,7 @@ fn player_positioning_system(
 /// Every universal tick, queries all players for their desired action and applies
 /// it. At the moment this only results in movement (or death) but will likely expand
 /// into more complex actions.
+#[allow(clippy::type_complexity)]
 fn player_action_system(
     time: Res<Time>,
     mut timer_query: Query<&mut Timer, With<PlayerTimer>>,
@@ -181,7 +188,13 @@ fn player_action_system(
     let mut timer = timer_query.single_mut().unwrap();
     if timer.tick(time.delta()).just_finished() {
         for (mut location, mut store, instance, player_name) in player_query.iter_mut() {
-            let action = wasm_player_action(&mut store, instance, &location, tile_query.iter(), object_query.iter())?;
+            let action = wasm_player_action(
+                &mut store,
+                instance,
+                &location,
+                tile_query.iter(),
+                object_query.iter(),
+            )?;
             if let Err(e) = apply_action(
                 action,
                 player_name,
@@ -223,10 +236,10 @@ fn move_player<'a>(
     objects: impl Iterator<Item = (&'a TileLocation, &'a Object)>,
 ) -> Result<()> {
     let target_location = (*player_location + direction)
-        .ok_or(anyhow!("Invalid target location ({})", player_name))?;
+        .ok_or_else(|| anyhow!("Invalid target location ({})", player_name))?;
     let target_tile = tiles
         .find_map(|(l, t)| (*l == target_location).then(|| t))
-        .ok_or(anyhow!("No tile at target location ({})", player_name))?;
+        .ok_or_else(|| anyhow!("No tile at target location ({})", player_name))?;
     let objects_on_target_tile =
         objects.filter_map(|(l, o)| (*l == target_location).then(|| o)).count();
 
@@ -250,12 +263,13 @@ fn wasm_player_action<'a>(
 ) -> Result<Action> {
     let last_result = LastTurnResult::StoodStill; // TODO close the LastTurnResult loop.
     let objects: Vec<_> = objects.collect();
-    let player_surroundings: Vec<_> = tiles
+    let player_surroundings: Vec<(Tile, Option<Object>, TileOffset)> = tiles
         .filter_map(|(location, tile)| {
-            let object_on_tile = objects.iter().cloned().find_map(|(l, o)| (l == location).then(|| *o));
+            let object_on_tile =
+                objects.iter().cloned().find_map(|(l, o)| (l == location).then(|| *o));
             ((*location - *player_location).taxicab_distance() <= PLAYER_VIEW_TAXICAB_DISTANCE)
                 .then(|| (*tile, object_on_tile, (*location - *player_location)))
         })
         .collect();
-    wasm_act(store, instance, dbg!(player_surroundings), last_result)
+    wasm_act(store, instance, player_surroundings, last_result)
 }

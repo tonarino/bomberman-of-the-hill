@@ -1,6 +1,10 @@
 use std::convert::TryFrom;
 
-use bomber_lib::{self, Action, LastTurnResult, Player, world::{Direction, Object, Tile}};
+use bomber_lib::{
+    self,
+    world::{Direction, Object, Tile},
+    Action, LastTurnResult, Player,
+};
 use bomber_macro::wasm_export;
 
 struct Wanderer {
@@ -24,9 +28,9 @@ impl Player for Wanderer {
     ) -> Action {
         // A wanderer walks to their preferred direction if it's free.
         // If it isn't, they  walk to the first free tile they inspect.
-        let preferred_tile = surroundings
-            .iter()
-            .find_map(|(t, o, p)| (o.is_none() && (*p == self.preferred_direction.extend(1))).then(|| t));
+        let preferred_tile = surroundings.iter().find_map(|(t, o, p)| {
+            (o.is_none() && (*p == self.preferred_direction.extend(1))).then(|| t)
+        });
         if matches!(preferred_tile, Some(Tile::EmptyFloor)) {
             Action::Move(Direction::North)
         } else {

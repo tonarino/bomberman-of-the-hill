@@ -1,4 +1,8 @@
-use bomber_lib::{self, Action, LastTurnResult, Player, world::{Direction, Object, Tile}};
+use bomber_lib::{
+    self,
+    world::{Direction, Object, Tile},
+    Action, LastTurnResult, Player,
+};
 use bomber_macro::wasm_export;
 
 #[derive(Default)]

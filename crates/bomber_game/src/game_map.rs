@@ -8,7 +8,11 @@ use bevy::prelude::*;
 use bomber_lib::world::{Direction, Object, Tile, TileOffset};
 use rand::Rng;
 
-use crate::{Wrapper, log_unrecoverable_error_and_panic, rendering::{GAME_MAP_Z, GAME_OBJECT_Z, TILE_HEIGHT_PX, TILE_WIDTH_PX}};
+use crate::{
+    log_unrecoverable_error_and_panic,
+    rendering::{GAME_MAP_Z, GAME_OBJECT_Z, TILE_HEIGHT_PX, TILE_WIDTH_PX},
+    Wrapper,
+};
 
 /// comfortable for 8 players, many starting crates, open hill in the center.
 pub const CRATE_HEAVY_CROSS_ARENA_SMALL: &str =
@@ -131,7 +135,7 @@ impl GameMap {
         parent.spawn().insert(tile).insert(location).insert_bundle(SpriteBundle {
             material: materials.add(texture.clone().into()),
             transform: Transform::from_translation(
-                location.to_world_coordinates(game_map).extend(GAME_MAP_Z),
+                location.as_world_coordinates(game_map).extend(GAME_MAP_Z),
             ),
             sprite: Sprite::new(Vec2::splat(TILE_WIDTH_PX)),
             ..Default::default()
@@ -153,7 +157,7 @@ impl GameMap {
         parent.spawn().insert(object).insert(location).insert_bundle(SpriteBundle {
             material: materials.add(texture.clone().into()),
             transform: Transform::from_translation(
-                location.to_world_coordinates(game_map).extend(GAME_OBJECT_Z),
+                location.as_world_coordinates(game_map).extend(GAME_OBJECT_Z),
             ),
             sprite: Sprite::new(Vec2::splat(TILE_WIDTH_PX)),
             ..Default::default()
@@ -165,7 +169,7 @@ impl GameMap {
 pub struct TileLocation(pub usize, pub usize);
 
 impl TileLocation {
-    pub fn to_world_coordinates(&self, game_map: &GameMap) -> Vec2 {
+    pub fn as_world_coordinates(&self, game_map: &GameMap) -> Vec2 {
         let width_offset = game_map.width as f32 * TILE_WIDTH_PX / 2.0;
         let height_offset = game_map.height as f32 * TILE_WIDTH_PX / 2.0;
         Vec2::new(
@@ -219,7 +223,7 @@ impl From<char> for Wrapper<Tile> {
     fn from(character: char) -> Self {
         match character {
             '#' => Wrapper(Tile::Wall),
-            '~' => Wrapper(Tile::Hill),
+            '~' | 'C' => Wrapper(Tile::Hill),
             _ => Wrapper(Tile::EmptyFloor),
         }
     }
@@ -234,8 +238,8 @@ impl TryFrom<char> for Wrapper<Object> {
             // Numbers in the map text represent a chance for a crate to spawn.
             p @ '1'..='9' => (p.to_digit(10).unwrap() >= rand::thread_rng().gen_range(1..=10))
                 .then(|| Wrapper(Object::Crate))
-                .ok_or(anyhow!("Random crate roll failed")),
-            _ => Err(anyhow!("Character does not correspond to a crate or a crate chance")),
+                .ok_or_else(|| anyhow!("Random crate roll failed")),
+            _ => Err(anyhow!("Character does not correspond to an object or an object chance")),
         }
     }
 }
@@ -249,18 +253,5 @@ impl TryFrom<char> for PlayerSpawner {
         } else {
             Err(anyhow!("Character does not correspond to a spawner"))
         }
-    }
-}
-
-pub trait TileIteration {
-    type Output: Iterator<Item = TileLocation>;
-    fn surrounding(self, location: TileLocation) -> Self::Output;
-}
-
-impl<I: Iterator<Item = TileLocation>> TileIteration for I {
-    type Output = impl Iterator<Item = TileLocation>;
-
-    fn surrounding(self, location: TileLocation) -> Self::Output {
-        self.filter(move |t| (*t - location).is_adjacent())
     }
 }
