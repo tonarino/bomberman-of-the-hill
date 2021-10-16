@@ -8,10 +8,7 @@ use bevy::prelude::*;
 use bomber_lib::world::{Direction, Object, Tile, TileOffset};
 use rand::Rng;
 
-use crate::{
-    rendering::{GAME_MAP_Z, TILE_HEIGHT_PX, TILE_WIDTH_PX},
-    log_unrecoverable_error_and_panic, Wrapper,
-};
+use crate::{Wrapper, log_unrecoverable_error_and_panic, rendering::{GAME_MAP_Z, GAME_OBJECT_Z, TILE_HEIGHT_PX, TILE_WIDTH_PX}};
 
 /// comfortable for 8 players, many starting crates, open hill in the center.
 pub const CRATE_HEAVY_CROSS_ARENA_SMALL: &str =
@@ -31,6 +28,7 @@ pub struct Textures {
     pub wall: Handle<Texture>,
     pub floor: Handle<Texture>,
     pub hill: Handle<Texture>,
+    pub bomb: Handle<Texture>,
     pub breakable: Handle<Texture>,
 }
 
@@ -41,6 +39,7 @@ impl Plugin for GameMapPlugin {
         let textures = Textures {
             wall: asset_server.load("graphics/Sprites/Blocks/SolidBlock.png"),
             floor: asset_server.load("graphics/Sprites/Blocks/BackgroundTile.png"),
+            bomb: asset_server.load("graphics/Sprites/Bomb/Bomb_f01.png"),
             hill: asset_server.load("graphics/Sprites/Blocks/BackgroundTileColorShifted.png"),
             breakable: asset_server.load("graphics/Sprites/Blocks/ExplodableBlock.png"),
         };
@@ -54,7 +53,12 @@ fn setup(
     textures: Res<Textures>,
     mut materials: ResMut<Assets<ColorMaterial>>,
 ) -> Result<()> {
-    GameMap::spawn_from_text(&mut commands, CRATE_HEAVY_CROSS_ARENA_SMALL, &textures, &mut materials)
+    GameMap::spawn_from_text(
+        &mut commands,
+        CRATE_HEAVY_CROSS_ARENA_SMALL,
+        &textures,
+        &mut materials,
+    )
 }
 
 impl GameMap {
@@ -79,14 +83,16 @@ impl GameMap {
             .enumerate()
             .flat_map(|(i, l)| l.chars().enumerate().map(move |(j, c)| (i, j, c)));
 
-        commands.spawn().insert(game_map).insert_bundle(SpriteBundle::default()).with_children(|parent| {
-            for (i, j, c) in indexed_characters {
-                let location = TileLocation(i, j);
-                Self::spawn_game_elements_from_character(
-                    parent, &game_map, location, c, textures, materials,
-                );
-            }
-        });
+        commands.spawn().insert(game_map).insert_bundle(SpriteBundle::default()).with_children(
+            |parent| {
+                for (i, j, c) in indexed_characters {
+                    let location = TileLocation(i, j);
+                    Self::spawn_game_elements_from_character(
+                        parent, &game_map, location, c, textures, materials,
+                    );
+                }
+            },
+        );
 
         Ok(())
     }
@@ -102,7 +108,7 @@ impl GameMap {
         let Wrapper::<Tile>(tile) = character.into();
         Self::spawn_tile(parent, game_map, tile, location, textures, materials);
         if let Ok(Wrapper::<Object>(object)) = character.try_into() {
-            parent.spawn().insert(object).insert(location);
+            Self::spawn_object(parent, game_map, object, location, textures, materials);
         }
         if let Ok(spawner) = PlayerSpawner::try_from(character) {
             parent.spawn().insert(spawner).insert(location);
@@ -126,6 +132,28 @@ impl GameMap {
             material: materials.add(texture.clone().into()),
             transform: Transform::from_translation(
                 location.to_world_coordinates(game_map).extend(GAME_MAP_Z),
+            ),
+            sprite: Sprite::new(Vec2::splat(TILE_WIDTH_PX)),
+            ..Default::default()
+        });
+    }
+
+    fn spawn_object(
+        parent: &mut ChildBuilder,
+        game_map: &GameMap,
+        object: Object,
+        location: TileLocation,
+        textures: &Textures,
+        materials: &mut Assets<ColorMaterial>,
+    ) {
+        let texture = match object {
+            Object::Bomb => &textures.bomb,
+            Object::Crate => &textures.breakable,
+        };
+        parent.spawn().insert(object).insert(location).insert_bundle(SpriteBundle {
+            material: materials.add(texture.clone().into()),
+            transform: Transform::from_translation(
+                location.to_world_coordinates(game_map).extend(GAME_OBJECT_Z),
             ),
             sprite: Sprite::new(Vec2::splat(TILE_WIDTH_PX)),
             ..Default::default()

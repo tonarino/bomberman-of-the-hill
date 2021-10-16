@@ -10,7 +10,7 @@ use bomber_lib::{
 };
 use wasmtime::Store;
 
-use crate::{downgrade_error, game_map::{GameMap, PlayerSpawner, TileLocation}, log_recoverable_error, log_unrecoverable_error_and_panic, player_hotswap::{PlayerHandles, WasmPlayerAsset}, rendering::{PLAYER_HEIGHT_PX, PLAYER_WIDTH_PX, PLAYER_Z}};
+use crate::{game_map::{GameMap, PlayerSpawner, TileLocation}, log_recoverable_error, log_unrecoverable_error_and_panic, player_hotswap::{PlayerHandles, WasmPlayerAsset}, rendering::{PLAYER_HEIGHT_PX, PLAYER_VERTICAL_OFFSET_PX, PLAYER_WIDTH_PX, PLAYER_Z}};
 
 pub struct PlayerBehaviourPlugin;
 /// Marks a player
@@ -18,6 +18,7 @@ struct Player;
 /// Marks the timer used to sequence all player actions (the universal tick)
 struct PlayerTimer;
 
+/// How far player characters can see their surroundings
 const PLAYER_VIEW_TAXICAB_DISTANCE: u32 = 3;
 
 impl Plugin for PlayerBehaviourPlugin {
@@ -25,8 +26,12 @@ impl Plugin for PlayerBehaviourPlugin {
         app.add_startup_system(setup.system())
             .insert_resource(wasmtime::Engine::default())
             .add_system(player_spawn_system.system())
-            .add_system(player_positioning_system.system().chain(log_unrecoverable_error_and_panic.system()))
-            .add_system(player_action_system.system().chain(downgrade_error.system()));
+            .add_system(
+                player_positioning_system
+                    .system()
+                    .chain(log_unrecoverable_error_and_panic.system()),
+            )
+            .add_system(player_action_system.system().chain(log_recoverable_error.system()));
     }
 }
 
@@ -139,7 +144,8 @@ fn spawn_player(
         .insert_bundle(SpriteBundle {
             material: materials.add(texture_handle.into()),
             transform: Transform::from_translation(
-                location.to_world_coordinates(game_map).extend(PLAYER_Z),
+                location.to_world_coordinates(game_map).extend(PLAYER_Z)
+                + Vec3::new(0.0, PLAYER_VERTICAL_OFFSET_PX, 0.0)
             ),
             sprite: Sprite::new(Vec2::new(PLAYER_WIDTH_PX, PLAYER_HEIGHT_PX)),
             ..Default::default()
@@ -153,7 +159,8 @@ fn player_positioning_system(
 ) -> Result<()> {
     let game_map = game_map_query.single()?;
     for (mut transform, location) in player_query.iter_mut() {
-        transform.translation = location.to_world_coordinates(game_map).extend(PLAYER_Z);
+        transform.translation = location.to_world_coordinates(game_map).extend(PLAYER_Z)
+                + Vec3::new(0.0, PLAYER_VERTICAL_OFFSET_PX, 0.0);
     }
     Ok(())
 }
@@ -174,15 +181,16 @@ fn player_action_system(
     let mut timer = timer_query.single_mut().unwrap();
     if timer.tick(time.delta()).just_finished() {
         for (mut location, mut store, instance, player_name) in player_query.iter_mut() {
-            let action = wasm_player_action(&mut store, instance, &location, tile_query.iter())?;
-            apply_action(
+            let action = wasm_player_action(&mut store, instance, &location, tile_query.iter(), object_query.iter())?;
+            if let Err(e) = apply_action(
                 action,
                 player_name,
                 tile_query.iter(),
                 object_query.iter(),
                 &mut location,
-
-            )?;
+            ) {
+                info!("{}", e);
+            }
         }
     }
     Ok(())
@@ -197,8 +205,13 @@ fn apply_action<'a>(
     player_location: &mut TileLocation,
 ) -> Result<()> {
     match action {
-        Action::Move(direction) => move_player(player_name, player_location, direction, tiles, objects),
-        Action::StayStill => Ok(()),
+        Action::Move(direction) => {
+            move_player(player_name, player_location, direction, tiles, objects)
+        },
+        Action::StayStill => {
+            info!("{} decides to stay still at {:?}", player_name, player_location);
+            Ok(())
+        },
     }
 }
 
@@ -209,15 +222,17 @@ fn move_player<'a>(
     mut tiles: impl Iterator<Item = (&'a TileLocation, &'a Tile)>,
     objects: impl Iterator<Item = (&'a TileLocation, &'a Object)>,
 ) -> Result<()> {
-    let target_location =
-        (*player_location + direction).ok_or(anyhow!("Invalid target location ({})", player_name))?;
+    let target_location = (*player_location + direction)
+        .ok_or(anyhow!("Invalid target location ({})", player_name))?;
     let target_tile = tiles
         .find_map(|(l, t)| (*l == target_location).then(|| t))
         .ok_or(anyhow!("No tile at target location ({})", player_name))?;
-    let objects_on_target_tile = objects.filter_map(|(l, o)| (*l == target_location).then(|| o)).count();
+    let objects_on_target_tile =
+        objects.filter_map(|(l, o)| (*l == target_location).then(|| o)).count();
 
     match target_tile {
         Tile::EmptyFloor | Tile::Hill if objects_on_target_tile == 0 => {
+            info!("{} moves to {:?}", player_name, target_location);
             *player_location = target_location;
             Ok(())
         },
@@ -231,13 +246,16 @@ fn wasm_player_action<'a>(
     instance: &wasmtime::Instance,
     player_location: &TileLocation,
     tiles: impl Iterator<Item = (&'a TileLocation, &'a Tile)>,
+    objects: impl Iterator<Item = (&'a TileLocation, &'a Object)>,
 ) -> Result<Action> {
     let last_result = LastTurnResult::StoodStill; // TODO close the LastTurnResult loop.
+    let objects: Vec<_> = objects.collect();
     let player_surroundings: Vec<_> = tiles
         .filter_map(|(location, tile)| {
+            let object_on_tile = objects.iter().cloned().find_map(|(l, o)| (l == location).then(|| *o));
             ((*location - *player_location).taxicab_distance() <= PLAYER_VIEW_TAXICAB_DISTANCE)
-                .then(|| (*tile, (*location - *player_location)))
+                .then(|| (*tile, object_on_tile, (*location - *player_location)))
         })
         .collect();
-    wasm_act(store, instance, player_surroundings, last_result)
+    wasm_act(store, instance, dbg!(player_surroundings), last_result)
 }

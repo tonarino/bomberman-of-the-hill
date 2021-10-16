@@ -1,8 +1,4 @@
-use bomber_lib::{
-    self,
-    world::{Direction, Tile},
-    Action, LastTurnResult, Player,
-};
+use bomber_lib::{self, Action, LastTurnResult, Player, world::{Direction, Object, Tile}};
 use bomber_macro::wasm_export;
 
 #[derive(Default)]
@@ -12,7 +8,7 @@ struct Fool;
 impl Player for Fool {
     fn act(
         &mut self,
-        _surroundings: Vec<(Tile, bomber_lib::world::TileOffset)>,
+        _surroundings: Vec<(Tile, Option<Object>, bomber_lib::world::TileOffset)>,
         _last_result: LastTurnResult,
     ) -> Action {
         // A fool ignores everything and just walks north!
