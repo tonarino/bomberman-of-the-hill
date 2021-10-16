@@ -42,7 +42,7 @@ fn log_unrecoverable_error_and_panic(In(result): In<Result<()>>) {
 }
 
 #[allow(unused)]
-fn downgrade_error(In(result): In<Result<()>>) {
+fn log_and_downgrade_error(In(result): In<Result<()>>) {
     if let Err(e) = result {
         info!("Downgraded error: {}", e);
     }
