@@ -1,11 +1,8 @@
 use anyhow::{Context, Error};
+use log::*;
 use rand::Rng;
 use rouille::{Request, Response};
-use std::{
-    env, fs,
-    io::{stderr, Read},
-    path::Path,
-};
+use std::{env, fs, io::Read, path::Path, time::Duration};
 
 const PLAYERS_DIRECTORY: &str = "crates/bomber_game/assets/players";
 
@@ -17,8 +14,33 @@ const WASM_FILE_PREFIX: &[u8] = b"\0asm";
 
 fn main() {
     // TODO(Matej): load env from dotenv.
+    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("debug")).init();
+
     let bind_addr = env::var("UPLOAD_SERVER_ADDRESS").unwrap_or_else(|_| "0.0.0.0:8765".to_owned());
-    rouille::start_server(bind_addr, |req| rouille::log(req, stderr(), || handler(req)));
+
+    let log_ok = |req: &Request, resp: &Response, elapsed: Duration| {
+        info!(
+            "{} {} {} {:?} {}",
+            req.method(),
+            req.raw_url(),
+            req.remote_addr(),
+            elapsed,
+            resp.status_code
+        );
+    };
+    let log_err = |req: &Request, elapsed: Duration| {
+        error!(
+            "Handler panicked: {} {} {} {:?}",
+            req.method(),
+            req.raw_url(),
+            req.remote_addr(),
+            elapsed
+        );
+    };
+
+    rouille::start_server(bind_addr, move |req| {
+        rouille::log_custom(req, log_ok, log_err, || handler(req))
+    });
 }
 
 fn handler(request: &Request) -> Response {
@@ -64,6 +86,6 @@ fn handle_upload(api_key: &str, data: &[u8]) -> Result<(), Error> {
     // Writing is not atomic, so write to temp file and them rename.
     fs::write(&temp_path, data).with_context(|| format!("writing {:?}", temp_path))?;
     fs::rename(&temp_path, &path)?;
-    eprintln!("{:?} saved.", path);
+    info!("{:?} saved.", path);
     Ok(())
 }
