@@ -20,7 +20,7 @@ pub enum Tile {
 
 #[derive(EnumIter, Copy, Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub enum Object {
-    Bomb,
+    Bomb { fuse_length: u32 },
     Crate,
 }
 

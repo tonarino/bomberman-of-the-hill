@@ -19,22 +19,21 @@ use crate::{
     log_recoverable_error, log_unrecoverable_error_and_panic,
     player_hotswap::{PlayerHandles, WasmPlayerAsset},
     rendering::{PLAYER_HEIGHT_PX, PLAYER_VERTICAL_OFFSET_PX, PLAYER_WIDTH_PX, PLAYER_Z},
+    score::Score,
+    tick::Tick,
 };
 
 pub struct PlayerBehaviourPlugin;
 /// Marks a player
-struct Player;
-/// Marks the timer used to sequence all player actions (the universal tick)
-struct PlayerTimer;
 struct PlayerName(String);
+pub struct Player;
 
 /// How far player characters can see their surroundings
 const PLAYER_VIEW_TAXICAB_DISTANCE: u32 = 3;
 
 impl Plugin for PlayerBehaviourPlugin {
     fn build(&self, app: &mut AppBuilder) {
-        app.add_startup_system(setup.system())
-            .insert_resource(wasmtime::Engine::default())
+        app.insert_resource(wasmtime::Engine::default())
             .add_system(player_spawn_system.system())
             .add_system(
                 player_positioning_system
@@ -43,10 +42,6 @@ impl Plugin for PlayerBehaviourPlugin {
             )
             .add_system(player_action_system.system().chain(log_recoverable_error.system()));
     }
-}
-
-fn setup(mut commands: Commands) {
-    commands.spawn().insert(Timer::from_seconds(1.0, true)).insert(PlayerTimer);
 }
 
 /// Ensures the number of active live players matches the `.wasm` files under `assets/players`
@@ -154,6 +149,7 @@ fn spawn_player(
         .insert(location)
         .insert(handle)
         .insert(PlayerName(name.clone()))
+        .insert(Score(0))
         .insert_bundle(SpriteBundle {
             material: materials.add(texture_handle.into()),
             transform: Transform::from_translation(
@@ -215,8 +211,6 @@ fn player_positioning_system(
 /// it. At the moment this only results in movement but will likely expand into more
 /// complex actions.
 fn player_action_system(
-    time: Res<Time>,
-    mut timer_query: Query<&mut Timer, With<PlayerTimer>>,
     mut player_query: Query<
         (&mut TileLocation, &mut wasmtime::Store<()>, &wasmtime::Instance, &PlayerName),
         With<Player>,
@@ -224,9 +218,9 @@ fn player_action_system(
     tile_query: Query<(&TileLocation, &Tile), (Without<Player>, Without<Object>)>,
     object_query: Query<(&TileLocation, &Object), (Without<Player>, Without<Tile>)>,
     mut spawn_bomb_event: EventWriter<SpawnBombEvent>,
+    mut ticks: EventReader<Tick>,
 ) -> Result<()> {
-    let mut timer = timer_query.single_mut().unwrap();
-    if timer.tick(time.delta()).just_finished() {
+    for _ in ticks.iter().filter(|t| matches!(t, Tick::Player)) {
         for (mut location, mut store, instance, player_name) in player_query.iter_mut() {
             let action =
                 wasm_player_action(&mut store, instance, &location, &tile_query, &object_query)?;

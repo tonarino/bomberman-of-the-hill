@@ -3,18 +3,17 @@
 // Disabling lint for the module because of the ubiquitous Bevy queries.
 #![allow(clippy::type_complexity)]
 
-use bevy::{prelude::*, utils::Duration};
+use bevy::prelude::*;
 use bomber_lib::world::{Direction, Object, Tile};
 
 use crate::{
     game_map::{GameMap, TileLocation},
     rendering::{FLAME_Z, GAME_OBJECT_Z, TILE_WIDTH_PX},
+    tick::Tick,
 };
 
-// A bomb explodes after this duration since it's placed on the map.
-const BOMB_FUSE_DURATION: Duration = Duration::from_secs(2);
-// Flames despawn after this duration since a bomb explodes.
-const BOMB_EXPLOSION_DURATION: Duration = Duration::from_secs(1);
+// A bomb explodes after this number of ticks since it's placed on the map.
+const BOMB_FUSE_LENGTH: u32 = 3;
 // The initial number of tiles that an explosion reach in each direction.
 const INITIAL_BOMB_POWER: u32 = 2;
 
@@ -56,7 +55,7 @@ impl Plugin for BombPlugin {
             .add_event::<SpawnBombEvent>()
             .add_system(bomb_spawn_system.system())
             .add_system(bomb_explosion_system.system())
-            .add_system(bomb_despawn_system.system());
+            .add_system(explosion_despawn_system.system());
     }
 }
 
@@ -96,9 +95,8 @@ fn spawn_bomb(
     commands
         .spawn()
         .insert(Bomb)
-        .insert(Object::Bomb)
+        .insert(Object::Bomb { fuse_length: BOMB_FUSE_LENGTH })
         .insert(*location)
-        .insert(Timer::new(BOMB_FUSE_DURATION, false))
         .insert_bundle(SpriteBundle {
             material: materials.add(textures.bomb.clone().into()),
             transform: Transform::from_translation(
@@ -114,11 +112,11 @@ fn spawn_bomb(
 
 #[allow(clippy::too_many_arguments)]
 fn bomb_explosion_system(
-    mut bomb_query: Query<(Entity, &TileLocation, &mut Timer), With<Bomb>>,
+    mut ticks: EventReader<Tick>,
+    mut bomb_query: Query<(Entity, &TileLocation, &mut Object), With<Bomb>>,
     tile_query: Query<(&TileLocation, &Tile)>,
-    object_query: Query<(&TileLocation, &Object)>,
+    object_query: Query<(&TileLocation, &Object), Without<Bomb>>,
     game_map_query: Query<&GameMap>,
-    time: Res<Time>,
     textures: Res<Textures>,
     audio: Res<Audio>,
     sound_effects: Res<SoundEffects>,
@@ -127,33 +125,42 @@ fn bomb_explosion_system(
 ) {
     let game_map = game_map_query.single().expect("Failed to retrieve game map");
 
-    let mut bomb_exploded = false;
-    for (entity, location, mut timer) in bomb_query.iter_mut() {
-        if timer.tick(time.delta()).just_finished() {
-            commands.entity(entity).despawn_recursive();
-            commands
-                .spawn()
-                .insert(Explosion)
-                .insert(Timer::new(BOMB_EXPLOSION_DURATION, false))
-                .insert_bundle(SpriteBundle::default())
-                .with_children(|parent| {
-                    spawn_flames(
-                        parent,
-                        location,
-                        &tile_query,
-                        &object_query,
-                        INITIAL_BOMB_POWER,
-                        game_map,
-                        &textures,
-                        &mut materials,
-                    );
-                });
-            bomb_exploded = true;
-        }
-    }
+    for _ in ticks.iter().filter(|t| matches!(t, Tick::World)) {
+        let mut any_bomb_exploded = false;
+        for (entity, location, mut object) in bomb_query.iter_mut() {
+            let should_explode = match *object {
+                Object::Bomb { ref mut fuse_length } => {
+                    *fuse_length = fuse_length.saturating_sub(1);
+                    *fuse_length == 0
+                },
+                _ => false,
+            };
 
-    if bomb_exploded {
-        audio.play(sound_effects.explosion.clone());
+            if should_explode {
+                commands.entity(entity).despawn();
+                commands
+                    .spawn()
+                    .insert(Explosion)
+                    .insert_bundle(SpriteBundle::default())
+                    .with_children(|parent| {
+                        spawn_flames(
+                            parent,
+                            location,
+                            &tile_query,
+                            &object_query,
+                            INITIAL_BOMB_POWER,
+                            game_map,
+                            &textures,
+                            &mut materials,
+                        );
+                    });
+                any_bomb_exploded = true;
+            }
+        }
+
+        if any_bomb_exploded {
+            audio.play(sound_effects.explosion.clone());
+        }
     }
 }
 
@@ -162,7 +169,7 @@ fn spawn_flames(
     parent: &mut ChildBuilder,
     bomb_location: &TileLocation,
     tile_query: &Query<(&TileLocation, &Tile)>,
-    object_query: &Query<(&TileLocation, &Object)>,
+    object_query: &Query<(&TileLocation, &Object), Without<Bomb>>,
     bomb_power: u32,
     game_map: &GameMap,
     textures: &Textures,
@@ -209,13 +216,13 @@ fn spawn_flame(
     });
 }
 
-fn bomb_despawn_system(
-    mut explosion_query: Query<(Entity, &mut Timer), With<Explosion>>,
-    time: Res<Time>,
+fn explosion_despawn_system(
+    mut ticks: EventReader<Tick>,
+    explosion_query: Query<Entity, With<Explosion>>,
     mut commands: Commands,
 ) {
-    for (entity, mut timer) in explosion_query.iter_mut() {
-        if timer.tick(time.delta()).just_finished() {
+    for _ in ticks.iter().filter(|t| matches!(t, Tick::World)) {
+        for entity in explosion_query.iter() {
             commands.entity(entity).despawn_recursive();
         }
     }
