@@ -4,14 +4,37 @@ use bevy::{
     reflect::TypeUuid,
     utils::BoxedFuture,
 };
+use bomber_lib::world::Ticks;
 
 pub struct PlayerHotswapPlugin;
+
+/// Handle into a .wasm file, classified by whether or not it misbehaved.
+#[derive(Clone, Debug)]
+pub enum PlayerHandle {
+    ReadyToSpawn(Handle<WasmPlayerAsset>),
+    Panicked(Handle<WasmPlayerAsset>),
+    Respawning(Handle<WasmPlayerAsset>, Ticks),
+}
+
+impl PlayerHandle {
+    pub fn is_ready_to_spawn(&self) -> bool {
+        matches!(self, PlayerHandle::ReadyToSpawn(_))
+    }
+
+    pub fn inner(&self) -> &Handle<WasmPlayerAsset> {
+        match self {
+            PlayerHandle::ReadyToSpawn(h) => h,
+            PlayerHandle::Panicked(h) => h,
+            PlayerHandle::Respawning(h, _) => h,
+        }
+    }
+}
 
 /// Dynamic list of handles into `.wasm` files, which is updated every frame
 /// to match the `.wasm` files under the hotswap folder. Other systems watch
 /// for changes to this resource in order to react to players being added and
 /// removed from the game.
-pub struct PlayerHandles(pub Vec<Handle<WasmPlayerAsset>>);
+pub struct PlayerHandles(pub Vec<PlayerHandle>);
 
 #[derive(Debug, TypeUuid)]
 #[uuid = "6d74e1ac-79d0-48a9-8fbf-5e1fea758815"]
@@ -53,6 +76,10 @@ impl AssetLoader for WasmPlayerLoader {
 
 /// Maintains the `PlayerHandles` resource in sync with the files in the hotswap folder.
 fn hotswap_system(asset_server: Res<AssetServer>, mut handles: ResMut<PlayerHandles>) {
-    let untyped_handles = asset_server.load_folder("players").unwrap();
-    handles.0 = untyped_handles.into_iter().map(|h| h.typed()).collect();
+    let mut new_handles = asset_server.load_folder("players").unwrap();
+    // Remove any handles associated to files that have disappeared from the folder
+    handles.0.retain(|h| new_handles.iter().any(|new| new.id == h.inner().id));
+    // Add any handles that aren't already present and misbehaving
+    new_handles.retain(|h| handles.0.iter().all(|old| old.inner().id != h.id));
+    handles.0.extend(new_handles.into_iter().map(|new| PlayerHandle::ReadyToSpawn(new.typed())));
 }

@@ -17,7 +17,7 @@ pub enum AppState {
     VictoryScreen,
 }
 
-const GAME_DURATION: Duration = Duration::from_secs(1);
+const GAME_DURATION: Duration = Duration::from_secs(5 * 60);
 const VICTORY_SCREEN_DURATION: Duration = Duration::from_secs(30);
 
 pub struct AppStateTimer;
