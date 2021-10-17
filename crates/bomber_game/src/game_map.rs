@@ -1,56 +1,193 @@
-use std::{
-    array::IntoIter,
-    convert::TryFrom,
-    ops::{Add, Sub},
-    str::FromStr,
-};
+use std::ops::{Add, Sub};
 
 use anyhow::{anyhow, Result};
-use bomber_lib::world::{Direction, Tile, TileOffset};
+use bevy::prelude::*;
+use bomber_lib::world::{Direction, Object, Tile, TileOffset};
+use rand::Rng;
 
-use crate::Wrapper;
+use crate::{
+    log_unrecoverable_error_and_panic,
+    rendering::{GAME_MAP_Z, GAME_OBJECT_Z, TILE_HEIGHT_PX, TILE_WIDTH_PX},
+};
 
-pub const INITIAL_LOCATION: TileLocation = TileLocation(4, 0);
+/// comfortable for 8 players, many starting crates, open hill in the center.
+pub const CRATE_HEAVY_CROSS_ARENA_SMALL: &str =
+    include_str!("../assets/maps/crate_heavy_cross_arena_small.txt");
 
-#[allow(unused)]
-#[rustfmt::skip]
-pub const EASY: &str =
-    "###...###\n\
-     ##.....##\n\
-     #..###..#\n\
-     #..###..#\n\
-     #...#...#\n\
-     #.......#\n\
-     ####.####";
+/// Activating this plugin automatically spawns a game map on startup.
+pub struct GameMapPlugin;
 
-#[allow(unused)]
-#[rustfmt::skip]
-pub const DANGEROUS: &str =
-    "####.####\n\
-     #.......#\n\
-     #.#####.#\n\
-     #.XXXXX.#\n\
-     #.......#\n\
-     #.......#\n\
-     ####.####";
-
+#[derive(Copy, Clone, Debug)]
 pub struct GameMap {
-    tiles: Vec<Vec<Tile>>,
+    width: usize,
+    height: usize,
+}
+
+/// Spawners (represented with a `s` in textual form) designate the tiles in
+/// which player characters can appear.
+#[derive(Copy, Clone, Debug)]
+pub struct PlayerSpawner;
+
+pub struct Textures {
+    pub wall: Handle<Texture>,
+    pub floor: Handle<Texture>,
+    pub hill: Handle<Texture>,
+    pub bomb: Handle<Texture>,
+    pub breakable: Handle<Texture>,
+}
+
+impl Plugin for GameMapPlugin {
+    fn build(&self, app: &mut AppBuilder) {
+        let asset_server =
+            app.world().get_resource::<AssetServer>().expect("Failed to retrieve asset server");
+        let textures = Textures {
+            wall: asset_server.load("graphics/Sprites/Blocks/SolidBlock.png"),
+            floor: asset_server.load("graphics/Sprites/Blocks/BackgroundTile.png"),
+            bomb: asset_server.load("graphics/Sprites/Bomb/Bomb_f01.png"),
+            hill: asset_server.load("graphics/Sprites/Blocks/BackgroundTileColorShifted.png"),
+            breakable: asset_server.load("graphics/Sprites/Blocks/ExplodableBlock.png"),
+        };
+        app.insert_resource(textures);
+        app.add_startup_system(setup.system().chain(log_unrecoverable_error_and_panic.system()));
+    }
+}
+
+fn setup(
+    mut commands: Commands,
+    textures: Res<Textures>,
+    mut materials: ResMut<Assets<ColorMaterial>>,
+) -> Result<()> {
+    GameMap::spawn_from_text(
+        &mut commands,
+        CRATE_HEAVY_CROSS_ARENA_SMALL,
+        &textures,
+        &mut materials,
+    )
 }
 
 impl GameMap {
-    pub fn tiles_surrounding_location(&self, location: TileLocation) -> Vec<(Tile, TileOffset)> {
-        // TODO do more than the adjacent orthogonals, and do it programatically
-        IntoIter::new([(-1i32, 0i32), (1, 0), (0, 1), (0, -1)])
-            .filter_map(|(x, y)| {
-                self.tile(location + TileOffset(x, y)).map(|t| (t, TileOffset(x, y)))
-            })
-            .collect()
+    /// Initializes a game map and spawns all tiles and tile objects from
+    /// its textual representation, under a common entity parent.
+    pub fn spawn_from_text(
+        commands: &mut Commands,
+        text: &str,
+        textures: &Textures,
+        materials: &mut Assets<ColorMaterial>,
+    ) -> Result<()> {
+        let lines: Vec<&str> = text.lines().rev().collect();
+        if lines.windows(2).any(|w| w[0].len() != w[1].len()) {
+            return Err(anyhow!("Mismatched row sizes in the game map"));
+        }
+        if lines.is_empty() || lines[0].is_empty() {
+            return Err(anyhow!("Game map must have at least a row and a column"));
+        }
+        let game_map = GameMap { width: lines[0].len(), height: lines.len() };
+
+        let indexed_characters = lines
+            .iter()
+            .enumerate()
+            .flat_map(|(i, l)| l.chars().enumerate().map(move |(j, c)| (i, j, c)));
+
+        commands.spawn().insert(game_map).insert_bundle(SpriteBundle::default()).with_children(
+            |parent| {
+                for (i, j, c) in indexed_characters {
+                    let location = TileLocation(i, j);
+                    Self::spawn_game_elements_from_character(
+                        parent, &game_map, location, c, textures, materials,
+                    );
+                }
+            },
+        );
+
+        Ok(())
+    }
+
+    fn spawn_game_elements_from_character(
+        parent: &mut ChildBuilder,
+        game_map: &GameMap,
+        location: TileLocation,
+        character: char,
+        textures: &Textures,
+        materials: &mut Assets<ColorMaterial>,
+    ) {
+        let tile = tile_from_char(character);
+        Self::spawn_tile(parent, game_map, tile, location, textures, materials);
+        if let Some(object) = object_from_char(character) {
+            Self::spawn_object(parent, game_map, object, location, textures, materials);
+        }
+        if let Some(spawner) = spawner_from_char(character) {
+            parent.spawn().insert(spawner).insert(location);
+        }
+    }
+
+    fn spawn_tile(
+        parent: &mut ChildBuilder,
+        game_map: &GameMap,
+        tile: Tile,
+        location: TileLocation,
+        textures: &Textures,
+        materials: &mut Assets<ColorMaterial>,
+    ) {
+        let texture = match tile {
+            Tile::Wall => &textures.wall,
+            Tile::Floor => &textures.floor,
+            Tile::Hill => &textures.hill,
+        };
+        parent.spawn().insert(tile).insert(location).insert_bundle(SpriteBundle {
+            material: materials.add(texture.clone().into()),
+            transform: Transform::from_translation(
+                location.as_world_coordinates(game_map).extend(GAME_MAP_Z),
+            ),
+            sprite: Sprite::new(Vec2::splat(TILE_WIDTH_PX)),
+            ..Default::default()
+        });
+    }
+
+    fn spawn_object(
+        parent: &mut ChildBuilder,
+        game_map: &GameMap,
+        object: Object,
+        location: TileLocation,
+        textures: &Textures,
+        materials: &mut Assets<ColorMaterial>,
+    ) {
+        let texture = match object {
+            Object::Bomb => &textures.bomb,
+            Object::Crate => &textures.breakable,
+        };
+        parent.spawn().insert(object).insert(location).insert_bundle(SpriteBundle {
+            material: materials.add(texture.clone().into()),
+            transform: Transform::from_translation(
+                location.as_world_coordinates(game_map).extend(GAME_OBJECT_Z),
+            ),
+            sprite: Sprite::new(Vec2::splat(TILE_WIDTH_PX)),
+            ..Default::default()
+        });
     }
 }
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub struct TileLocation(pub usize, pub usize);
+
+impl TileLocation {
+    pub fn as_world_coordinates(&self, game_map: &GameMap) -> Vec2 {
+        let width_offset = game_map.width as f32 * TILE_WIDTH_PX / 2.0;
+        let height_offset = game_map.height as f32 * TILE_WIDTH_PX / 2.0;
+        Vec2::new(
+            self.0 as f32 * TILE_WIDTH_PX - width_offset,
+            self.1 as f32 * TILE_HEIGHT_PX - height_offset,
+        )
+    }
+
+    pub fn taxicab_distance_to_closest(
+        &self,
+        locations: impl Iterator<Item = TileLocation>,
+    ) -> u32 {
+        locations.fold(u32::MAX, |shortest, location| {
+            (*self - location).taxicab_distance().min(shortest)
+        })
+    }
+}
 
 impl Add<Direction> for TileLocation {
     type Output = Option<TileLocation>;
@@ -83,70 +220,30 @@ impl Sub<TileLocation> for TileLocation {
     }
 }
 
-impl GameMap {
-    pub fn size(&self) -> (usize, usize) {
-        (self.tiles[0].len(), self.tiles.len())
-    }
-
-    pub fn tile(&self, location: TileLocation) -> Option<Tile> {
-        self.tiles.get(location.1).and_then(|v| v.get(location.0)).cloned()
-    }
-}
-
-impl TryFrom<char> for Wrapper<Tile> {
-    type Error = anyhow::Error;
-
-    fn try_from(character: char) -> Result<Self, Self::Error> {
-        match character {
-            '.' => Ok(Wrapper(Tile::EmptyFloor)),
-            '#' => Ok(Wrapper(Tile::Wall)),
-            'X' => Ok(Wrapper(Tile::Lava)),
-            's' => Ok(Wrapper(Tile::Switch)),
-            _ => Err(anyhow!("Invalid character for tile: {}", character)),
-        }
+// Implemented as a standalone function to bypass the orphan rule, as the tiles
+// to convert to are defined in the `hero_lib` crate, which must be kept clean for
+// the players
+fn tile_from_char(character: char) -> Tile {
+    match character {
+        '#' => Tile::Wall,
+        '~' | 'C' => Tile::Hill,
+        _ => Tile::Floor,
     }
 }
 
-impl FromStr for GameMap {
-    type Err = anyhow::Error;
-
-    fn from_str(text: &str) -> Result<Self> {
-        let lines: Vec<&str> = text.lines().rev().collect();
-        if lines.windows(2).any(|w| w[0].len() != w[1].len()) {
-            Err(anyhow!("Mismatched row sizes in the game map"))
-        } else if lines.is_empty() || lines[0].is_empty() {
-            Err(anyhow!("Game map must have at least a row and a column"))
-        } else {
-            let convert_line = |l: &str| -> Result<Vec<Tile>> {
-                l.chars().map(|c| Wrapper::<Tile>::try_from(c).map(|w| w.0)).collect()
-            };
-            let tiles: Result<Vec<Vec<Tile>>> = lines.into_iter().map(convert_line).collect();
-            Ok(Self { tiles: tiles? })
-        }
+// Implemented as a standalone function for the same reason as `tile_from_char`
+fn object_from_char(character: char) -> Option<Object> {
+    match character {
+        'c' | 'C' => Some(Object::Crate),
+        // Numbers in the map text represent a chance for a crate to spawn.
+        p @ '1'..='9' => {
+            (p.to_digit(10).unwrap() >= rand::thread_rng().gen_range(1..=10)).then(|| Object::Crate)
+        },
+        _ => None,
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn parsing_game_maps() {
-        #[rustfmt::skip]
-        let game_map_text =
-            "####.###\n\
-             #......#\n\
-             #.####.#\n\
-             #..##..#\n\
-             #X.##..#\n\
-             #......#\n\
-             ####.###";
-        let game_map = GameMap::from_str(game_map_text).unwrap();
-        assert_eq!(game_map.size(), (8, 7));
-        assert_eq!(game_map.tile(TileLocation(0, 0)).unwrap(), Tile::Wall);
-        assert_eq!(game_map.tile(TileLocation(4, 0)).unwrap(), Tile::EmptyFloor);
-        assert_eq!(game_map.tile(TileLocation(1, 1)).unwrap(), Tile::EmptyFloor);
-        assert_eq!(game_map.tile(TileLocation(1, 2)).unwrap(), Tile::Lava);
-        assert_eq!(game_map.tile(TileLocation(8, 8)), None);
-    }
+// Implemented as a standalone function for the same reason as `tile_from_char`
+fn spawner_from_char(character: char) -> Option<PlayerSpawner> {
+    (character == 's').then(|| PlayerSpawner)
 }

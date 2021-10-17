@@ -14,9 +14,14 @@ pub enum Direction {
 #[derive(EnumIter, Copy, Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub enum Tile {
     Wall,
-    Lava,
-    Switch,
-    EmptyFloor,
+    Floor,
+    Hill,
+}
+
+#[derive(EnumIter, Copy, Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub enum Object {
+    Bomb,
+    Crate,
 }
 
 /// Position relative to something (typically the player, as this type is used
@@ -47,6 +52,14 @@ impl TileOffset {
     pub fn is_orthogonally_adjacent(&self) -> bool {
         (self.0.abs() == 1 && self.1 == 0) || (self.0 == 0 && self.1.abs() == 1)
     }
+
+    pub fn taxicab_distance(&self) -> u32 {
+        (self.0.abs() + self.1.abs()) as u32
+    }
+
+    pub fn chebyshev_distance(&self) -> u32 {
+        self.0.abs().max(self.1.abs()) as u32
+    }
 }
 
 impl std::ops::Add for TileOffset {
@@ -70,5 +83,18 @@ impl TryFrom<TileOffset> for Direction {
             TileOffset(0, y) if y < 0 => Ok(Direction::South),
             _ => Err(()),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn various_distance_calculations() {
+        let offset = TileOffset(4, 3);
+
+        assert_eq!(offset.taxicab_distance(), 7);
+        assert_eq!(offset.chebyshev_distance(), 4);
     }
 }

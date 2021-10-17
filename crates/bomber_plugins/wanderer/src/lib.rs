@@ -2,7 +2,7 @@ use std::convert::TryFrom;
 
 use bomber_lib::{
     self,
-    world::{Direction, Tile},
+    world::{Direction, Object, Tile},
     Action, LastTurnResult, Player,
 };
 use bomber_macro::wasm_export;
@@ -23,21 +23,21 @@ impl Default for Wanderer {
 impl Player for Wanderer {
     fn act(
         &mut self,
-        surroundings: Vec<(Tile, bomber_lib::world::TileOffset)>,
+        surroundings: Vec<(Tile, Option<Object>, bomber_lib::world::TileOffset)>,
         _last_result: LastTurnResult,
     ) -> Action {
         // A wanderer walks to their preferred direction if it's free.
         // If it isn't, they  walk to the first free tile they inspect.
-        let preferred_tile = surroundings
-            .iter()
-            .find_map(|(t, p)| (*p == self.preferred_direction.extend(1)).then(|| t));
-        if matches!(preferred_tile, Some(Tile::EmptyFloor)) {
+        let preferred_tile = surroundings.iter().find_map(|(t, o, p)| {
+            (o.is_none() && (*p == self.preferred_direction.extend(1))).then(|| t)
+        });
+        if matches!(preferred_tile, Some(Tile::Floor)) {
             Action::Move(Direction::North)
         } else {
             surroundings
                 .iter()
-                .filter(|(t, p)| p.is_adjacent() && matches!(t, Tile::EmptyFloor))
-                .find_map(|(_, p)| Direction::try_from(*p).map(Action::Move).ok())
+                .filter(|(t, o, p)| o.is_none() && p.is_adjacent() && matches!(t, Tile::Floor))
+                .find_map(|(_, _, p)| Direction::try_from(*p).map(Action::Move).ok())
                 .unwrap_or(Action::StayStill)
         }
     }
