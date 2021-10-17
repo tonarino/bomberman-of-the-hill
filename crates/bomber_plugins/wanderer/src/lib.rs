@@ -9,11 +9,12 @@ use bomber_macro::wasm_export;
 
 struct Wanderer {
     preferred_direction: Direction,
+    bomb_ticks: u32,
 }
 
 impl Default for Wanderer {
     fn default() -> Self {
-        Self { preferred_direction: Direction::North }
+        Self { preferred_direction: Direction::North, bomb_ticks: 0 }
     }
 }
 
@@ -26,6 +27,13 @@ impl Player for Wanderer {
         surroundings: Vec<(Tile, Option<Object>, bomber_lib::world::TileOffset)>,
         _last_result: LastTurnResult,
     ) -> Action {
+        // Drops a bomb every once in a while.
+        if self.bomb_ticks >= 3 {
+            self.bomb_ticks = 0;
+            return Action::DropBomb;
+        }
+        self.bomb_ticks += 1;
+
         // A wanderer walks to their preferred direction if it's free.
         // If it isn't, they  walk to the first free tile they inspect.
         let preferred_tile = surroundings.iter().find_map(|(t, o, p)| {
