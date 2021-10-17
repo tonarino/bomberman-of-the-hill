@@ -12,6 +12,11 @@ const API_KEYS: &[&str] = &["abcdef", "123456"];
 const MAX_WASM_SIZE: usize = 10_000_000;
 const WASM_FILE_PREFIX: &[u8] = b"\0asm";
 
+const BAD_REQUEST: u16 = 400;
+const UNAUTHORIZED: u16 = 401;
+const METHOD_NOT_ALLOWED: u16 = 405;
+const INTERNAL_SERVER_ERROR: u16 = 500;
+
 fn main() {
     // TODO(Matej): load env from dotenv.
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("debug")).init();
@@ -45,35 +50,36 @@ fn main() {
 
 fn handler(request: &Request) -> Response {
     if request.method() != "POST" {
-        return Response::text("We only accept HTTP POST.\n").with_status_code(405);
+        return Response::text("We only accept HTTP POST.\n").with_status_code(METHOD_NOT_ALLOWED);
     }
 
     let api_key = request.header("Api-Key").unwrap_or_default();
     if !API_KEYS.contains(&api_key) {
         return Response::text("HTTP header Api-Key not present or not matching.\n")
-            .with_status_code(401);
+            .with_status_code(UNAUTHORIZED);
     }
 
     if let Some(mut body) = request.data() {
         let mut data = Vec::new();
         if let Err(e) = body.read_to_end(&mut data) {
             return Response::text(format!("Failed to read input body: {}\n", e))
-                .with_status_code(500);
+                .with_status_code(INTERNAL_SERVER_ERROR);
         }
         if data.len() > MAX_WASM_SIZE {
             return Response::text(format!("Maximum size of {} exceeded.\n", MAX_WASM_SIZE))
-                .with_status_code(400);
+                .with_status_code(BAD_REQUEST);
         }
         if !data.starts_with(WASM_FILE_PREFIX) {
-            return Response::text("Uploaded data not a WASM file.\n").with_status_code(400);
+            return Response::text("Uploaded data not a WASM file.\n")
+                .with_status_code(BAD_REQUEST);
         }
         match handle_upload(api_key, &data) {
             Ok(()) => Response::text("Your submission has been accepted.\n"),
             Err(e) => Response::text(format!("Error accepting your submission: {:#}\n", e))
-                .with_status_code(500),
+                .with_status_code(INTERNAL_SERVER_ERROR),
         }
     } else {
-        Response::text("Please submit request with body.\n").with_status_code(400)
+        Response::text("Please submit request with body.\n").with_status_code(BAD_REQUEST)
     }
 }
 
