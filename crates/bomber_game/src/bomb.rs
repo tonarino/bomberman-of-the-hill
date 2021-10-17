@@ -97,7 +97,7 @@ fn spawn_bomb(
         .spawn()
         .insert(Bomb)
         .insert(Object::Bomb)
-        .insert(location.clone())
+        .insert(*location)
         .insert(Timer::new(BUMB_FUSE_DURATION, false))
         .insert_bundle(SpriteBundle {
             material: materials.add(textures.bomb.clone().into()),
@@ -143,7 +143,7 @@ fn bomb_explosion_system(
                         &tile_query,
                         &object_query,
                         INITIAL_BOMB_POWER,
-                        &game_map,
+                        game_map,
                         &textures,
                         &mut materials,
                     );
@@ -199,7 +199,7 @@ fn spawn_flame(
     textures: &Textures,
     materials: &mut Assets<ColorMaterial>,
 ) {
-    parent.spawn().insert(Flame).insert(location.clone()).insert_bundle(SpriteBundle {
+    parent.spawn().insert(Flame).insert(*location).insert_bundle(SpriteBundle {
         material: materials.add(textures.flame.clone().into()),
         transform: Transform::from_translation(
             location.as_world_coordinates(game_map).extend(FLAME_Z),
@@ -223,5 +223,5 @@ fn bomb_despawn_system(
 
 /// Places a bomb at the specified location.
 pub fn drop_bomb(location: &TileLocation, commands: &mut Commands) {
-    commands.spawn().insert(BombSpawner).insert(location.clone());
+    commands.spawn().insert(BombSpawner).insert(*location);
 }
