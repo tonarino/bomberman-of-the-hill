@@ -141,7 +141,9 @@ fn spawn_player(
     // TODO if this fails, the character should immediately be booted out (file deleted) to
     // guarantee stability
     let name = wasm_name(&mut store, &instance)?;
+    let name = filter_name(&name);
     let team_name = wasm_team_name(&mut store, &instance)?;
+
     info!("{} from team {} has entered the game!", name, team_name);
     commands
         .spawn()
@@ -166,6 +168,16 @@ fn spawn_player(
             spawn_player_text(p, asset_server, name);
         });
     Ok(())
+}
+
+fn filter_name(name: &str) -> String {
+    const MAX_NAME_CHARS: usize = 16;
+
+    // Only take the first line of text, and limit it to 16 chars.
+    name.lines()
+        .next()
+        .map(|line| line.chars().take(MAX_NAME_CHARS).collect())
+        .unwrap_or_else(|| "Trickster".to_string())
 }
 
 fn spawn_player_text(
