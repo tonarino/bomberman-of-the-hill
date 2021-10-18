@@ -5,17 +5,23 @@ use bomb::BombPlugin;
 use game_map::GameMapPlugin;
 use player_behaviour::PlayerBehaviourPlugin;
 use player_hotswap::PlayerHotswapPlugin;
+use score::ScorePlugin;
+use tick::TickPlugin;
 
 mod bomb;
 mod game_map;
 mod player_behaviour;
 mod player_hotswap;
 mod rendering;
+mod score;
+mod tick;
 
 fn main() -> Result<()> {
     App::build()
         .add_plugins(DefaultPlugins)
         .add_plugin(GameMapPlugin)
+        .add_plugin(TickPlugin)
+        .add_plugin(ScorePlugin)
         .add_plugin(PlayerBehaviourPlugin)
         .add_plugin(PlayerHotswapPlugin)
         .add_plugin(BombPlugin)

@@ -18,11 +18,15 @@ pub enum Tile {
     Hill,
 }
 
-#[derive(EnumIter, Copy, Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub enum Object {
-    Bomb,
+    Bomb { fuse_remaining: Ticks },
     Crate,
 }
+
+/// Ticks measure game time. Players make one decision per tick.
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Serialize, Deserialize)]
+pub struct Ticks(pub u32);
 
 /// Position relative to something (typically the player, as this type is used
 /// to tell the player where tiles are respective to them, without leaking the
