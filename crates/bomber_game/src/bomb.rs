@@ -9,6 +9,7 @@ use bomber_lib::world::{Direction, Object, Ticks, Tile};
 use crate::{
     game_map::{GameMap, TileLocation},
     rendering::{FLAME_Z, GAME_OBJECT_Z, TILE_WIDTH_PX},
+    state::AppState,
     tick::Tick,
 };
 
@@ -53,9 +54,13 @@ impl Plugin for BombPlugin {
         app.insert_resource(textures)
             .insert_resource(sound_effects)
             .add_event::<SpawnBombEvent>()
-            .add_system(bomb_spawn_system.system())
-            .add_system(bomb_explosion_system.system())
-            .add_system(explosion_despawn_system.system());
+            .add_system_set(
+                SystemSet::on_update(AppState::InGame)
+                    .with_system(bomb_spawn_system.system())
+                    .with_system(bomb_explosion_system.system())
+                    .with_system(explosion_despawn_system.system()),
+            )
+            .add_system_set(SystemSet::on_exit(AppState::InGame).with_system(cleanup.system()));
     }
 }
 
@@ -227,5 +232,11 @@ fn explosion_despawn_system(
         for entity in explosion_query.iter() {
             commands.entity(entity).despawn_recursive();
         }
+    }
+}
+
+fn cleanup(bomb_query: Query<Entity, Or<(With<Bomb>, With<Explosion>)>>, mut commands: Commands) {
+    for entity in bomb_query.iter() {
+        commands.entity(entity).despawn_recursive();
     }
 }
