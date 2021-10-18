@@ -4,7 +4,7 @@
 #![allow(clippy::type_complexity)]
 
 use bevy::prelude::*;
-use bomber_lib::world::{Direction, Object, Tile};
+use bomber_lib::world::{Direction, Object, Ticks, Tile};
 
 use crate::{
     game_map::{GameMap, TileLocation},
@@ -13,7 +13,7 @@ use crate::{
 };
 
 // A bomb explodes after this number of ticks since it's placed on the map.
-const BOMB_FUSE_LENGTH: u32 = 3;
+const BOMB_FUSE_LENGTH: Ticks = Ticks(3);
 // The initial number of tiles that an explosion reach in each direction.
 const INITIAL_BOMB_POWER: u32 = 2;
 
@@ -129,15 +129,15 @@ fn bomb_explosion_system(
         let mut any_bomb_exploded = false;
         for (entity, location, mut object) in bomb_query.iter_mut() {
             let should_explode = match *object {
-                Object::Bomb { fuse_remaining: ref mut fuse_length } => {
-                    *fuse_length = fuse_length.saturating_sub(1);
-                    *fuse_length == 0
+                Object::Bomb { ref mut fuse_remaining } => {
+                    fuse_remaining.0 = fuse_remaining.0.saturating_sub(1);
+                    fuse_remaining.0 == 0
                 },
                 _ => false,
             };
 
             if should_explode {
-                commands.entity(entity).despawn();
+                commands.entity(entity).despawn_recursive();
                 commands
                     .spawn()
                     .insert(Explosion)
