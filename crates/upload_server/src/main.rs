@@ -23,8 +23,15 @@ const METHOD_NOT_ALLOWED: u16 = 405;
 const INTERNAL_SERVER_ERROR: u16 = 500;
 
 fn main() -> Result<(), Error> {
-    // TODO(Matej): load env from dotenv.
+    let dotenv_result = dotenv::dotenv();
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("debug")).init();
+    match dotenv_result {
+        Ok(path) => info!("Loaded env variables from {:?}.", path),
+        Err(e) => info!(
+            "Loading .env file: {}. Copy .env.example to .env to conveniently set env variables.",
+            e
+        ),
+    }
 
     let key_count = env::var("API_KEY_COUNT")
         .unwrap_or_else(|_| "20".to_owned())

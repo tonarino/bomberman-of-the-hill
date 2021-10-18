@@ -1,4 +1,5 @@
 /target
 /api_keys.txt
+/.env
 Cargo.lock
 *.wasm
