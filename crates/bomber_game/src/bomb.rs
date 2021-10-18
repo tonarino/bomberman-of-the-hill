@@ -95,7 +95,7 @@ fn spawn_bomb(
     commands
         .spawn()
         .insert(Bomb)
-        .insert(Object::Bomb { fuse_length: BOMB_FUSE_LENGTH })
+        .insert(Object::Bomb { fuse_remaining: BOMB_FUSE_LENGTH })
         .insert(*location)
         .insert_bundle(SpriteBundle {
             material: materials.add(textures.bomb.clone().into()),
@@ -129,7 +129,7 @@ fn bomb_explosion_system(
         let mut any_bomb_exploded = false;
         for (entity, location, mut object) in bomb_query.iter_mut() {
             let should_explode = match *object {
-                Object::Bomb { ref mut fuse_length } => {
+                Object::Bomb { fuse_remaining: ref mut fuse_length } => {
                     *fuse_length = fuse_length.saturating_sub(1);
                     *fuse_length == 0
                 },
