@@ -14,6 +14,7 @@ use bomber_lib::{
 use wasmtime::Store;
 
 use crate::{
+    bomb::SpawnBombEvent,
     game_map::{GameMap, PlayerSpawner, TileLocation},
     log_recoverable_error, log_unrecoverable_error_and_panic,
     player_hotswap::{PlayerHandles, WasmPlayerAsset},
@@ -222,15 +223,21 @@ fn player_action_system(
     >,
     tile_query: Query<(&TileLocation, &Tile), (Without<Player>, Without<Object>)>,
     object_query: Query<(&TileLocation, &Object), (Without<Player>, Without<Tile>)>,
+    mut spawn_bomb_event: EventWriter<SpawnBombEvent>,
 ) -> Result<()> {
     let mut timer = timer_query.single_mut().unwrap();
     if timer.tick(time.delta()).just_finished() {
         for (mut location, mut store, instance, player_name) in player_query.iter_mut() {
             let action =
                 wasm_player_action(&mut store, instance, &location, &tile_query, &object_query)?;
-            if let Err(e) =
-                apply_action(action, player_name, &tile_query, &object_query, &mut location)
-            {
+            if let Err(e) = apply_action(
+                action,
+                player_name,
+                &tile_query,
+                &object_query,
+                &mut spawn_bomb_event,
+                &mut location,
+            ) {
                 // We downgrade this error to informative as the player is allowed
                 // to attempt impossible things like walking into a wall (We can later
                 // animate these).
@@ -247,6 +254,7 @@ fn apply_action(
     player_name: &PlayerName,
     tile_query: &Query<(&TileLocation, &Tile), (Without<Player>, Without<Object>)>,
     object_query: &Query<(&TileLocation, &Object), (Without<Player>, Without<Tile>)>,
+    spawn_bomb_event: &mut EventWriter<SpawnBombEvent>,
     player_location: &mut TileLocation,
 ) -> Result<()> {
     match action {
@@ -257,6 +265,12 @@ fn apply_action(
             let PlayerName(player_name) = player_name;
 
             info!("{} decides to stay still at {:?}", player_name, player_location);
+            Ok(())
+        },
+        Action::DropBomb => {
+            info!("{} drops a bomb at {:?}", player_name, player_location);
+            // TODO(ryo): Decrement the number of bombs the player carries.
+            spawn_bomb_event.send(SpawnBombEvent(*player_location));
             Ok(())
         },
     }

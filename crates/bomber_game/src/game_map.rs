@@ -6,6 +6,7 @@ use bomber_lib::world::{Direction, Object, Tile, TileOffset};
 use rand::Rng;
 
 use crate::{
+    bomb::Flame,
     log_unrecoverable_error_and_panic,
     rendering::{GAME_MAP_Z, GAME_OBJECT_Z, TILE_HEIGHT_PX, TILE_WIDTH_PX},
 };
@@ -32,7 +33,6 @@ pub struct Textures {
     pub wall: Handle<Texture>,
     pub floor: Handle<Texture>,
     pub hill: Handle<Texture>,
-    pub bomb: Handle<Texture>,
     pub breakable: Handle<Texture>,
 }
 
@@ -43,12 +43,12 @@ impl Plugin for GameMapPlugin {
         let textures = Textures {
             wall: asset_server.load("graphics/Sprites/Blocks/SolidBlock.png"),
             floor: asset_server.load("graphics/Sprites/Blocks/BackgroundTile.png"),
-            bomb: asset_server.load("graphics/Sprites/Bomb/Bomb_f01.png"),
             hill: asset_server.load("graphics/Sprites/Blocks/BackgroundTileColorShifted.png"),
             breakable: asset_server.load("graphics/Sprites/Blocks/ExplodableBlock.png"),
         };
         app.insert_resource(textures);
-        app.add_startup_system(setup.system().chain(log_unrecoverable_error_and_panic.system()));
+        app.add_startup_system(setup.system().chain(log_unrecoverable_error_and_panic.system()))
+            .add_system(object_despawn_system.system());
     }
 }
 
@@ -63,6 +63,19 @@ fn setup(
         &textures,
         &mut materials,
     )
+}
+
+fn object_despawn_system(
+    flame_query: Query<&TileLocation, With<Flame>>,
+    object_query: Query<(Entity, &TileLocation), With<Object>>,
+    mut commands: Commands,
+) {
+    for (entity, location) in object_query.iter() {
+        let on_fire = flame_query.iter().any(|l| *l == *location);
+        if on_fire {
+            commands.entity(entity).despawn_recursive();
+        }
+    }
 }
 
 impl GameMap {
@@ -94,7 +107,8 @@ impl GameMap {
                     let location = TileLocation(i, j);
                     Self::spawn_game_elements_from_character(
                         parent, &game_map, location, c, textures, materials,
-                    );
+                    )
+                    .expect("Failed to spawn game elements");
                 }
             },
         );
@@ -109,15 +123,17 @@ impl GameMap {
         character: char,
         textures: &Textures,
         materials: &mut Assets<ColorMaterial>,
-    ) {
+    ) -> Result<()> {
         let tile = tile_from_char(character);
         Self::spawn_tile(parent, game_map, tile, location, textures, materials);
         if let Some(object) = object_from_char(character) {
-            Self::spawn_object(parent, game_map, object, location, textures, materials);
+            Self::spawn_object(parent, game_map, object, location, textures, materials)?;
         }
         if let Some(spawner) = spawner_from_char(character) {
             parent.spawn().insert(spawner).insert(location);
         }
+
+        Ok(())
     }
 
     fn spawn_tile(
@@ -150,10 +166,12 @@ impl GameMap {
         location: TileLocation,
         textures: &Textures,
         materials: &mut Assets<ColorMaterial>,
-    ) {
+    ) -> Result<()> {
         let texture = match object {
-            Object::Bomb => &textures.bomb,
             Object::Crate => &textures.breakable,
+            _ => {
+                return Err(anyhow!("{:?} can not be spawn during game map creation.", object));
+            },
         };
         parent.spawn().insert(object).insert(location).insert_bundle(SpriteBundle {
             material: materials.add(texture.clone().into()),
@@ -163,6 +181,8 @@ impl GameMap {
             sprite: Sprite::new(Vec2::splat(TILE_WIDTH_PX)),
             ..Default::default()
         });
+
+        Ok(())
     }
 }
 

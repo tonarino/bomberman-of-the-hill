@@ -29,6 +29,8 @@ pub trait Player: Default {
 pub enum Action {
     Move(Direction),
     StayStill,
+    /// Places a bomb at the player's current location.
+    DropBomb,
 }
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]

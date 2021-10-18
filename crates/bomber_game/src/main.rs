@@ -1,10 +1,12 @@
 use anyhow::Result;
 use bevy::prelude::*;
-use player_hotswap::PlayerHotswapPlugin;
 
+use bomb::BombPlugin;
 use game_map::GameMapPlugin;
 use player_behaviour::PlayerBehaviourPlugin;
+use player_hotswap::PlayerHotswapPlugin;
 
+mod bomb;
 mod game_map;
 mod player_behaviour;
 mod player_hotswap;
@@ -12,10 +14,11 @@ mod rendering;
 
 fn main() -> Result<()> {
     App::build()
-        .add_plugins_with(DefaultPlugins, |group| group.disable::<bevy::audio::AudioPlugin>())
+        .add_plugins(DefaultPlugins)
         .add_plugin(GameMapPlugin)
         .add_plugin(PlayerBehaviourPlugin)
         .add_plugin(PlayerHotswapPlugin)
+        .add_plugin(BombPlugin)
         .add_startup_system(setup.system())
         .run();
     Ok(())

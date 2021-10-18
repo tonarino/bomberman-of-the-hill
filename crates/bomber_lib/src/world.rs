@@ -39,6 +39,10 @@ impl Direction {
             Direction::South => TileOffset(0, -amount.into()),
         }
     }
+
+    pub fn all() -> [Direction; 4] {
+        [Direction::West, Direction::North, Direction::East, Direction::South]
+    }
 }
 
 impl TileOffset {
