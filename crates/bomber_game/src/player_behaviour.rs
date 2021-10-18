@@ -25,6 +25,7 @@ pub struct PlayerBehaviourPlugin;
 struct Player;
 /// Marks the timer used to sequence all player actions (the universal tick)
 struct PlayerTimer;
+struct PlayerName(String);
 
 /// How far player characters can see their surroundings
 const PLAYER_VIEW_TAXICAB_DISTANCE: u32 = 3;
@@ -140,7 +141,9 @@ fn spawn_player(
     // TODO if this fails, the character should immediately be booted out (file deleted) to
     // guarantee stability
     let name = wasm_name(&mut store, &instance)?;
+    let name = filter_name(&name);
     let team_name = wasm_team_name(&mut store, &instance)?;
+
     info!("{} from team {} has entered the game!", name, team_name);
     commands
         .spawn()
@@ -149,7 +152,7 @@ fn spawn_player(
         .insert(store)
         .insert(location)
         .insert(handle)
-        .insert(name)
+        .insert(PlayerName(name.clone()))
         .insert_bundle(SpriteBundle {
             material: materials.add(texture_handle.into()),
             transform: Transform::from_translation(
@@ -158,8 +161,39 @@ fn spawn_player(
             ),
             sprite: Sprite::new(Vec2::new(PLAYER_WIDTH_PX, PLAYER_HEIGHT_PX)),
             ..Default::default()
+        })
+        .with_children(move |p| {
+            // Text needs to be a child in order to be offset from the player
+            // location but still move with the player.
+            spawn_player_text(p, asset_server, name);
         });
     Ok(())
+}
+
+fn filter_name(name: &str) -> String {
+    const MAX_NAME_CHARS: usize = 16;
+
+    // Only take the first line of text, and limit it to 16 chars.
+    name.lines()
+        .next()
+        .map(|line| line.chars().take(MAX_NAME_CHARS).collect())
+        .unwrap_or_else(|| "Trickster".to_string())
+}
+
+fn spawn_player_text(parent: &mut ChildBuilder, asset_server: &AssetServer, name: String) {
+    parent.spawn().insert_bundle(Text2dBundle {
+        text: Text::with_section(
+            name,
+            TextStyle {
+                font: asset_server.load("fonts/space_mono_400.ttf"),
+                font_size: 30.0,
+                color: Color::WHITE,
+            },
+            TextAlignment { vertical: VerticalAlign::Center, horizontal: HorizontalAlign::Center },
+        ),
+        transform: Transform::from_translation(Vec3::new(0.0, 30.0, 0.0)),
+        ..Default::default()
+    });
 }
 
 /// Each frame, matches the player world coordinates to their abstract position
@@ -183,7 +217,7 @@ fn player_action_system(
     time: Res<Time>,
     mut timer_query: Query<&mut Timer, With<PlayerTimer>>,
     mut player_query: Query<
-        (&mut TileLocation, &mut wasmtime::Store<()>, &wasmtime::Instance, &String),
+        (&mut TileLocation, &mut wasmtime::Store<()>, &wasmtime::Instance, &PlayerName),
         With<Player>,
     >,
     tile_query: Query<(&TileLocation, &Tile), (Without<Player>, Without<Object>)>,
@@ -210,7 +244,7 @@ fn player_action_system(
 /// Applies the action chosen by a player, causing an impact on the world or itself.
 fn apply_action(
     action: Action,
-    player_name: &str,
+    player_name: &PlayerName,
     tile_query: &Query<(&TileLocation, &Tile), (Without<Player>, Without<Object>)>,
     object_query: &Query<(&TileLocation, &Object), (Without<Player>, Without<Tile>)>,
     player_location: &mut TileLocation,
@@ -220,6 +254,8 @@ fn apply_action(
             move_player(player_name, player_location, direction, tile_query, object_query)
         },
         Action::StayStill => {
+            let PlayerName(player_name) = player_name;
+
             info!("{} decides to stay still at {:?}", player_name, player_location);
             Ok(())
         },
@@ -227,12 +263,14 @@ fn apply_action(
 }
 
 fn move_player(
-    player_name: &str,
+    player_name: &PlayerName,
     player_location: &mut TileLocation,
     direction: Direction,
     tile_query: &Query<(&TileLocation, &Tile), (Without<Player>, Without<Object>)>,
     object_query: &Query<(&TileLocation, &Object), (Without<Player>, Without<Tile>)>,
 ) -> Result<()> {
+    let PlayerName(player_name) = player_name;
+
     let target_location = (*player_location + direction)
         .ok_or_else(|| anyhow!("Invalid target location ({})", player_name))?;
     let target_tile = tile_query
