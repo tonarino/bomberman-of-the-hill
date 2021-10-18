@@ -14,7 +14,7 @@ use bomber_lib::{
 use wasmtime::Store;
 
 use crate::{
-    bomb::drop_bomb,
+    bomb::SpawnBombEvent,
     game_map::{GameMap, PlayerSpawner, TileLocation},
     log_recoverable_error, log_unrecoverable_error_and_panic,
     player_hotswap::{PlayerHandles, WasmPlayerAsset},
@@ -189,7 +189,7 @@ fn player_action_system(
     >,
     tile_query: Query<(&TileLocation, &Tile), (Without<Player>, Without<Object>)>,
     object_query: Query<(&TileLocation, &Object), (Without<Player>, Without<Tile>)>,
-    mut commands: Commands,
+    mut spawn_bomb_event: EventWriter<SpawnBombEvent>,
 ) -> Result<()> {
     let mut timer = timer_query.single_mut().unwrap();
     if timer.tick(time.delta()).just_finished() {
@@ -201,8 +201,8 @@ fn player_action_system(
                 player_name,
                 &tile_query,
                 &object_query,
+                &mut spawn_bomb_event,
                 &mut location,
-                &mut commands,
             ) {
                 // We downgrade this error to informative as the player is allowed
                 // to attempt impossible things like walking into a wall (We can later
@@ -220,8 +220,8 @@ fn apply_action(
     player_name: &str,
     tile_query: &Query<(&TileLocation, &Tile), (Without<Player>, Without<Object>)>,
     object_query: &Query<(&TileLocation, &Object), (Without<Player>, Without<Tile>)>,
+    spawn_bomb_event: &mut EventWriter<SpawnBombEvent>,
     player_location: &mut TileLocation,
-    commands: &mut Commands,
 ) -> Result<()> {
     match action {
         Action::Move(direction) => {
@@ -234,7 +234,7 @@ fn apply_action(
         Action::DropBomb => {
             info!("{} drops a bomb at {:?}", player_name, player_location);
             // TODO(ryo): Decrement the number of bombs the player carries.
-            drop_bomb(player_location, commands);
+            spawn_bomb_event.send(SpawnBombEvent(player_location.clone()));
             Ok(())
         },
     }

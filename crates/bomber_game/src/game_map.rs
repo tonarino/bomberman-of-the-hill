@@ -73,7 +73,7 @@ fn object_despawn_system(
     for (entity, location) in object_query.iter() {
         let on_fire = flame_query.iter().any(|l| *l == *location);
         if on_fire {
-            commands.entity(entity).despawn();
+            commands.entity(entity).despawn_recursive();
         }
     }
 }

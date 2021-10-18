@@ -12,7 +12,7 @@ use crate::{
 };
 
 // A bomb explodes after this duration since it's placed on the map.
-const BUMB_FUSE_DURATION: Duration = Duration::from_secs(2);
+const BOMB_FUSE_DURATION: Duration = Duration::from_secs(2);
 // Flames despawn after this duration since a bomb explodes.
 const BOMB_EXPLOSION_DURATION: Duration = Duration::from_secs(1);
 // The initial number of tiles that an explosion reach in each direction.
@@ -20,8 +20,8 @@ const INITIAL_BOMB_POWER: u32 = 2;
 
 pub struct BombPlugin;
 
-/// Marks a location to spawn a new bomb.
-struct BombSpawner;
+/// Triggers a new bomb to be spawn.
+pub struct SpawnBombEvent(pub TileLocation);
 /// Marks a bomb placed on the game map.
 struct Bomb;
 /// Marks the center of an explosion with flames in each direction.
@@ -53,6 +53,7 @@ impl Plugin for BombPlugin {
         };
         app.insert_resource(textures)
             .insert_resource(sound_effects)
+            .add_event::<SpawnBombEvent>()
             .add_system(bomb_spawn_system.system())
             .add_system(bomb_explosion_system.system())
             .add_system(bomb_despawn_system.system());
@@ -60,7 +61,7 @@ impl Plugin for BombPlugin {
 }
 
 fn bomb_spawn_system(
-    spawner_query: Query<(Entity, &TileLocation), With<BombSpawner>>,
+    mut spawn_event_reader: EventReader<SpawnBombEvent>,
     game_map_query: Query<&GameMap>,
     textures: Res<Textures>,
     audio: Res<Audio>,
@@ -70,8 +71,7 @@ fn bomb_spawn_system(
 ) {
     let game_map = game_map_query.single().expect("Failed to retrive game map");
 
-    for (entity, location) in spawner_query.iter() {
-        commands.entity(entity).despawn();
+    for SpawnBombEvent(location) in spawn_event_reader.iter() {
         spawn_bomb(
             location,
             game_map,
@@ -98,7 +98,7 @@ fn spawn_bomb(
         .insert(Bomb)
         .insert(Object::Bomb)
         .insert(*location)
-        .insert(Timer::new(BUMB_FUSE_DURATION, false))
+        .insert(Timer::new(BOMB_FUSE_DURATION, false))
         .insert_bundle(SpriteBundle {
             material: materials.add(textures.bomb.clone().into()),
             transform: Transform::from_translation(
@@ -130,7 +130,7 @@ fn bomb_explosion_system(
     let mut bomb_exploded = false;
     for (entity, location, mut timer) in bomb_query.iter_mut() {
         if timer.tick(time.delta()).just_finished() {
-            commands.entity(entity).despawn();
+            commands.entity(entity).despawn_recursive();
             commands
                 .spawn()
                 .insert(Explosion)
@@ -219,9 +219,4 @@ fn bomb_despawn_system(
             commands.entity(entity).despawn_recursive();
         }
     }
-}
-
-/// Places a bomb at the specified location.
-pub fn drop_bomb(location: &TileLocation, commands: &mut Commands) {
-    commands.spawn().insert(BombSpawner).insert(*location);
 }
