@@ -234,7 +234,7 @@ fn apply_action(
         Action::DropBomb => {
             info!("{} drops a bomb at {:?}", player_name, player_location);
             // TODO(ryo): Decrement the number of bombs the player carries.
-            spawn_bomb_event.send(SpawnBombEvent(player_location.clone()));
+            spawn_bomb_event.send(SpawnBombEvent(*player_location));
             Ok(())
         },
     }
