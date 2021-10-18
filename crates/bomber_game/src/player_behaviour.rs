@@ -180,11 +180,7 @@ fn filter_name(name: &str) -> String {
         .unwrap_or_else(|| "Trickster".to_string())
 }
 
-fn spawn_player_text(
-    parent: &mut bevy::prelude::ChildBuilder<'_, '_>,
-    asset_server: &AssetServer,
-    name: String,
-) {
+fn spawn_player_text(parent: &mut ChildBuilder, asset_server: &AssetServer, name: String) {
     parent.spawn().insert_bundle(Text2dBundle {
         text: Text::with_section(
             name,
@@ -258,7 +254,9 @@ fn apply_action(
             move_player(player_name, player_location, direction, tile_query, object_query)
         },
         Action::StayStill => {
-            info!("{} decides to stay still at {:?}", player_name.0, player_location);
+            let PlayerName(player_name) = player_name;
+
+            info!("{} decides to stay still at {:?}", player_name, player_location);
             Ok(())
         },
     }
@@ -271,7 +269,7 @@ fn move_player(
     tile_query: &Query<(&TileLocation, &Tile), (Without<Player>, Without<Object>)>,
     object_query: &Query<(&TileLocation, &Object), (Without<Player>, Without<Tile>)>,
 ) -> Result<()> {
-    let player_name = &player_name.0;
+    let PlayerName(player_name) = player_name;
 
     let target_location = (*player_location + direction)
         .ok_or_else(|| anyhow!("Invalid target location ({})", player_name))?;
