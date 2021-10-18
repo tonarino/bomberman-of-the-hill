@@ -221,7 +221,9 @@ fn explosion_despawn_system(
     explosion_query: Query<Entity, With<Explosion>>,
     mut commands: Commands,
 ) {
-    for _ in ticks.iter().filter(|t| matches!(t, Tick::World)) {
+    // We despawn explosions during player ticks as they're just a visual
+    // indication; the damage has already been done when spawning the flames.
+    for _ in ticks.iter().filter(|t| matches!(t, Tick::Player)) {
         for entity in explosion_query.iter() {
             commands.entity(entity).despawn_recursive();
         }
