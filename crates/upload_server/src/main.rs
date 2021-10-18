@@ -120,11 +120,19 @@ fn handler(request: &Request, api_keys: &[String]) -> Response {
         return Response::text("We only accept HTTP POST.\n").with_status_code(METHOD_NOT_ALLOWED);
     }
 
-    let api_key = request.header("Api-Key").unwrap_or_default();
-    if api_keys.iter().all(|allowed_key| allowed_key != api_key) {
-        return Response::text("HTTP header Api-Key not present or not matching.\n")
-            .with_status_code(UNAUTHORIZED);
-    }
+    let api_key = match request.header("Api-Key") {
+        Some(api_key) => {
+            if api_keys.iter().all(|allowed_key| allowed_key != api_key) {
+                return Response::text(format!("HTTP header Api-Key \"{}\" not valid.\n", api_key))
+                    .with_status_code(UNAUTHORIZED);
+            }
+            api_key
+        },
+        None => {
+            return Response::text("HTTP header Api-Key not present, please include it.")
+                .with_status_code(UNAUTHORIZED)
+        },
+    };
 
     if let Some(mut body) = request.data() {
         let mut data = Vec::new();
