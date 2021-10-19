@@ -1,5 +1,7 @@
+use anyhow::Result;
 use std::time::Duration;
 
+use crate::{log_unrecoverable_error_and_panic, state::AppState};
 use bevy::prelude::*;
 
 /// Helps keep game logic discrete by sending alternative world
@@ -24,7 +26,16 @@ pub enum Tick {
 
 impl Plugin for TickPlugin {
     fn build(&self, app: &mut AppBuilder) {
-        app.add_event::<Tick>().add_startup_system(setup.system()).add_system(tick_system.system());
+        app.add_event::<Tick>()
+            .add_system_set(SystemSet::on_enter(AppState::InGame).with_system(setup.system()))
+            .add_system_set(
+                SystemSet::on_update(AppState::InGame).with_system(tick_system.system()),
+            )
+            .add_system_set(
+                SystemSet::on_exit(AppState::InGame).with_system(
+                    cleanup.system().chain(log_unrecoverable_error_and_panic.system()),
+                ),
+            );
     }
 }
 
@@ -43,4 +54,11 @@ fn tick_system(
         events.send(event);
         tick_counter.0 += 1;
     }
+}
+
+fn cleanup(timer_query: Query<Entity, With<TickTimer>>, mut commands: Commands) -> Result<()> {
+    let entity = timer_query.single()?;
+    commands.entity(entity).despawn_recursive();
+
+    Ok(())
 }

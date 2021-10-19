@@ -9,6 +9,7 @@ use crate::{
     bomb::Flame,
     log_unrecoverable_error_and_panic,
     rendering::{GAME_MAP_Z, GAME_OBJECT_Z, TILE_HEIGHT_PX, TILE_WIDTH_PX},
+    state::AppState,
 };
 
 /// comfortable for 8 players, many starting crates, open hill in the center.
@@ -46,9 +47,18 @@ impl Plugin for GameMapPlugin {
             hill: asset_server.load("graphics/Sprites/Blocks/BackgroundTileColorShifted.png"),
             breakable: asset_server.load("graphics/Sprites/Blocks/ExplodableBlock.png"),
         };
-        app.insert_resource(textures);
-        app.add_startup_system(setup.system().chain(log_unrecoverable_error_and_panic.system()))
-            .add_system(object_despawn_system.system());
+        app.insert_resource(textures)
+            .add_system_set(
+                SystemSet::on_enter(AppState::InGame)
+                    .with_system(setup.system().chain(log_unrecoverable_error_and_panic.system())),
+            )
+            .add_system_set(
+                SystemSet::on_update(AppState::InGame).with_system(object_despawn_system.system()),
+            )
+            // Keep the game map on the victory screen as the background.
+            .add_system_set(
+                SystemSet::on_exit(AppState::VictoryScreen)
+                .with_system(cleanup.system().chain(log_unrecoverable_error_and_panic.system())));
     }
 }
 
@@ -76,6 +86,13 @@ fn object_despawn_system(
             commands.entity(entity).despawn_recursive();
         }
     }
+}
+
+fn cleanup(game_map_query: Query<Entity, With<GameMap>>, mut commands: Commands) -> Result<()> {
+    let entity = game_map_query.single()?;
+    commands.entity(entity).despawn_recursive();
+
+    Ok(())
 }
 
 impl GameMap {

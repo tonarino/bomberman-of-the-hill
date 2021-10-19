@@ -20,12 +20,13 @@ use crate::{
     player_hotswap::{PlayerHandles, WasmPlayerAsset},
     rendering::{PLAYER_HEIGHT_PX, PLAYER_VERTICAL_OFFSET_PX, PLAYER_WIDTH_PX, PLAYER_Z},
     score::Score,
+    state::AppState,
     tick::Tick,
 };
 
 pub struct PlayerBehaviourPlugin;
+pub struct PlayerName(pub String);
 /// Marks a player
-struct PlayerName(String);
 pub struct Player;
 
 /// How far player characters can see their surroundings
@@ -34,13 +35,23 @@ const PLAYER_VIEW_TAXICAB_DISTANCE: u32 = 3;
 impl Plugin for PlayerBehaviourPlugin {
     fn build(&self, app: &mut AppBuilder) {
         app.insert_resource(wasmtime::Engine::default())
-            .add_system(player_spawn_system.system())
-            .add_system(
-                player_positioning_system
-                    .system()
-                    .chain(log_unrecoverable_error_and_panic.system()),
+            .add_system_set(
+                SystemSet::on_update(AppState::InGame)
+                    .with_system(player_spawn_system.system())
+                    .with_system(
+                        player_positioning_system
+                            .system()
+                            .chain(log_unrecoverable_error_and_panic.system()),
+                    )
+                    .with_system(
+                        player_action_system.system().chain(log_recoverable_error.system()),
+                    ),
             )
-            .add_system(player_action_system.system().chain(log_recoverable_error.system()));
+            // Keep the players on the victory screen as the background.
+            .add_system_set(
+                SystemSet::on_exit(AppState::VictoryScreen)
+                    .with_system(cleanup.system()),
+            );
     }
 }
 
@@ -316,4 +327,10 @@ fn wasm_player_action(
         })
         .collect();
     wasm_act(store, instance, player_surroundings, last_result)
+}
+
+fn cleanup(player_query: Query<Entity, With<Player>>, mut commands: Commands) {
+    for entity in player_query.iter() {
+        commands.entity(entity).despawn_recursive();
+    }
 }
