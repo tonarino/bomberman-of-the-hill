@@ -69,29 +69,25 @@ fn spawn_podium(
     fonts: &Fonts,
 ) {
     // TODO(ryo): Handle a tie.
-    let no1_player = player_query.iter().max_by_key(|p| p.1 .0);
+    let no1_player = player_query.iter().max_by_key(|(_, Score(point), _)| point);
     if let Some((PlayerName(name), Score(score), material)) = no1_player {
         parent.spawn().insert_bundle(Text2dBundle {
             text: mono_text(&format!("#1 {}", name), 60.0, fonts),
-            transform: Transform::from_translation(Vec3::new(0.0, 100.0, VICTORY_SCREEN_ITEMS_Z)),
+            transform: Transform::from_translation(Vec3::new(0.0, 80.0, VICTORY_SCREEN_ITEMS_Z)),
             ..Default::default()
         });
 
         // The player avatar doubled in size.
         parent.spawn().insert_bundle(SpriteBundle {
             material: material.clone(),
-            transform: Transform::from_translation(Vec3::new(
-                0.0,
-                PLAYER_HEIGHT_PX,
-                VICTORY_SCREEN_ITEMS_Z,
-            )),
+            transform: Transform::from_translation(Vec3::new(0.0, 0.0, VICTORY_SCREEN_ITEMS_Z)),
             sprite: Sprite::new(Vec2::new(PLAYER_WIDTH_PX, PLAYER_HEIGHT_PX) * 2.0),
             ..Default::default()
         });
 
         parent.spawn().insert_bundle(Text2dBundle {
             text: mono_text(&format!("{} points", score), 30.0, fonts),
-            transform: Transform::from_translation(Vec3::new(0.0, -60.0, VICTORY_SCREEN_ITEMS_Z)),
+            transform: Transform::from_translation(Vec3::new(0.0, -80.0, VICTORY_SCREEN_ITEMS_Z)),
             ..Default::default()
         });
     }
