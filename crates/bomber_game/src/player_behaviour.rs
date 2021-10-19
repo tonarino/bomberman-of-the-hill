@@ -4,21 +4,26 @@
 // Disabling lint for the module because of the ubiquitous Bevy queries.
 #![allow(clippy::type_complexity)]
 
+use std::time::Duration;
+
 use anyhow::{anyhow, Result};
 use bevy::prelude::*;
 use bomber_lib::{
     wasm_act, wasm_name, wasm_team_name,
-    world::{Direction, Object, Tile, TileOffset},
+    world::{Direction, Object, Ticks, Tile, TileOffset},
     Action, LastTurnResult,
 };
 use wasmtime::Store;
 
 use crate::{
-    bomb::SpawnBombEvent,
+    bomb::{KillPlayerEvent, SpawnBombEvent},
     game_map::{GameMap, PlayerSpawner, TileLocation},
     log_recoverable_error, log_unrecoverable_error_and_panic,
-    player_hotswap::{PlayerHandles, WasmPlayerAsset},
-    rendering::{PLAYER_HEIGHT_PX, PLAYER_VERTICAL_OFFSET_PX, PLAYER_WIDTH_PX, PLAYER_Z},
+    player_hotswap::{PlayerHandle, PlayerHandles, WasmPlayerAsset},
+    rendering::{
+        PLAYER_HEIGHT_PX, PLAYER_VERTICAL_OFFSET_PX, PLAYER_WIDTH_PX, PLAYER_Z, SKELETON_HEIGHT_PX,
+        SKELETON_WIDTH_PX,
+    },
     score::Score,
     state::AppState,
     tick::Tick,
@@ -32,6 +37,14 @@ pub struct Player;
 /// How far player characters can see their surroundings
 const PLAYER_VIEW_TAXICAB_DISTANCE: u32 = 3;
 
+/// Visual representation of a dead player
+struct Skeleton;
+/// It's OK to use seconds rather than ticks for the skeleton as it's just a
+/// visual representation for fun.
+const SKELETON_DURATION: Duration = Duration::from_secs(3);
+
+const RESPAWN_TIME: Ticks = Ticks(3);
+
 impl Plugin for PlayerBehaviourPlugin {
     fn build(&self, app: &mut AppBuilder) {
         app.insert_resource(wasmtime::Engine::default())
@@ -43,6 +56,10 @@ impl Plugin for PlayerBehaviourPlugin {
                             .system()
                             .chain(log_unrecoverable_error_and_panic.system()),
                     )
+
+                    .with_system(player_death_system.system())
+                    .with_system(player_respawn_system.system())
+                    .with_system(skeleton_cleanup_system.system().chain(log_recoverable_error.system()))
                     .with_system(
                         player_action_system.system().chain(log_recoverable_error.system()),
                     ),
@@ -60,9 +77,9 @@ impl Plugin for PlayerBehaviourPlugin {
 #[allow(clippy::too_many_arguments)]
 fn player_spawn_system(
     mut commands: Commands,
-    handles: Res<PlayerHandles>,
+    mut handles: ResMut<PlayerHandles>,
     game_map_query: Query<&GameMap>,
-    player_query: Query<(Entity, &Handle<WasmPlayerAsset>, &TileLocation), With<Player>>,
+    mut player_query: Query<(Entity, &mut Handle<WasmPlayerAsset>, &TileLocation), With<Player>>,
     spawner_query: Query<&TileLocation, With<PlayerSpawner>>,
     object_query: Query<&TileLocation, With<Object>>,
     engine: Res<wasmtime::Engine>,
@@ -72,8 +89,8 @@ fn player_spawn_system(
 ) {
     let game_map = game_map_query.single().expect("Game map not found");
     // Despawn all excess players (if the wasm file was unloaded)
-    for (entity, handle, _) in player_query.iter() {
-        if handles.0.iter().all(|h| h.id != handle.id) {
+    for (entity, handle, _) in player_query.iter_mut() {
+        if handles.0.iter().all(|h| h.inner().id != handle.id) {
             commands.entity(entity).despawn_recursive();
         }
     }
@@ -86,7 +103,7 @@ fn player_spawn_system(
         .filter(|spawner_location| {
             object_query.iter().all(|object_location| object_location != spawner_location)
                 && player_query
-                    .iter()
+                    .iter_mut()
                     .all(|(.., player_location)| player_location != spawner_location)
         })
         .collect();
@@ -94,18 +111,19 @@ fn player_spawn_system(
     // Sort them in ascending order of distance to other players
     available_spawn_locations.sort_by_key(|spawner| {
         spawner.taxicab_distance_to_closest(
-            player_query.iter().map(|(.., player_location)| player_location).cloned(),
+            player_query.iter_mut().map(|(.., player_location)| player_location).cloned(),
         )
     });
     // Spawn all missing players (if the wasm file was just loaded)
     for (handle, location) in handles
         .0
-        .iter()
-        .filter(|handle| player_query.iter().all(|(_, h, _)| h.id != handle.id))
+        .iter_mut()
+        .filter(|handle| handle.is_ready_to_spawn())
+        .filter(|handle| player_query.iter_mut().all(|(_, h, _)| h.id != handle.inner().id))
         .zip(available_spawn_locations.iter())
     {
         spawn_player(
-            handle.clone(),
+            handle,
             *location,
             game_map,
             &engine,
@@ -123,7 +141,7 @@ fn player_spawn_system(
 /// get a "callback" into the world to use as they remain alive.
 #[allow(clippy::too_many_arguments)]
 fn spawn_player(
-    handle: Handle<WasmPlayerAsset>,
+    handle: &mut PlayerHandle,
     location: TileLocation,
     game_map: &GameMap,
     engine: &wasmtime::Engine,
@@ -135,7 +153,7 @@ fn spawn_player(
     // The Store owns all player-adjacent data internal to the wasm module
     let mut store = Store::new(engine, ());
     let wasm_bytes = assets
-        .get(&handle)
+        .get(handle.inner())
         .ok_or_else(|| anyhow!("Wasm asset not found at runtime"))?
         .bytes
         .clone();
@@ -145,11 +163,20 @@ fn spawn_player(
     // Here the module is bound to a store.
     let instance = wasmtime::Instance::new(&mut store, &module, &[])?;
     let texture_handle = asset_server.load("graphics/Sprites/Bomberman/Front/Bman_F_f00.png");
-    // TODO if this fails, the character should immediately be booted out (file deleted) to
-    // guarantee stability
-    let name = wasm_name(&mut store, &instance)?;
+
+    let name = if let Ok(name) = wasm_name(&mut store, &instance) {
+        name
+    } else {
+        *handle = PlayerHandle::Panicked(handle.inner().clone());
+        return Err(anyhow!("Wasm failed to return name, invalidating handle."));
+    };
     let name = filter_name(&name);
-    let team_name = wasm_team_name(&mut store, &instance)?;
+    let team_name = if let Ok(team_name) = wasm_team_name(&mut store, &instance) {
+        team_name
+    } else {
+        *handle = PlayerHandle::Panicked(handle.inner().clone());
+        return Err(anyhow!("Wasm failed to return team name, invalidating handle."));
+    };
 
     info!("{} from team {} has entered the game!", name, team_name);
     commands
@@ -158,7 +185,7 @@ fn spawn_player(
         .insert(instance)
         .insert(store)
         .insert(location)
-        .insert(handle)
+        .insert(handle.inner().clone())
         .insert(PlayerName(name.clone()))
         .insert(Score(0))
         .insert_bundle(SpriteBundle {
@@ -250,6 +277,79 @@ fn player_action_system(
             }
         }
     }
+    Ok(())
+}
+
+fn player_death_system(
+    mut kill_events: EventReader<KillPlayerEvent>,
+    mut commands: Commands,
+    mut player_query: Query<
+        (Entity, &Transform, &PlayerName, &Handle<WasmPlayerAsset>),
+        With<Player>,
+    >,
+    asset_server: Res<AssetServer>,
+    mut materials: ResMut<Assets<ColorMaterial>>,
+    mut handles: ResMut<PlayerHandles>,
+) {
+    for KillPlayerEvent(entity) in kill_events.iter() {
+        for (entity, transform, PlayerName(name), handle) in
+            player_query.iter_mut().filter(|(e, ..)| e == entity)
+        {
+            // The handle will be picked up and the player will be automatically respawned with
+            // fresh `wasm` state.
+            info!("{} has died!", name);
+            commands.entity(entity).despawn_recursive();
+            let texture_handle = asset_server.load("graphics/Sprites/Bomberman/Front/Dead.png");
+            commands
+                .spawn()
+                .insert_bundle(SpriteBundle {
+                    material: materials.add(texture_handle.into()),
+                    transform: *transform,
+                    sprite: Sprite::new(Vec2::new(SKELETON_WIDTH_PX, SKELETON_HEIGHT_PX)),
+                    ..Default::default()
+                })
+                .insert(Skeleton)
+                .insert(Timer::new(SKELETON_DURATION, false));
+
+            if let Some(handle) = handles.0.iter_mut().find(|h| h.inner().id == handle.id) {
+                *handle = PlayerHandle::Respawning(handle.inner().clone(), RESPAWN_TIME);
+            }
+        }
+    }
+}
+
+fn player_respawn_system(mut ticks: EventReader<Tick>, mut handles: ResMut<PlayerHandles>) {
+    for _ in ticks.iter().filter(|t| matches!(t, Tick::World)) {
+        for handle in handles.0.iter_mut() {
+            match handle {
+                PlayerHandle::ReadyToSpawn(_) => (),
+                PlayerHandle::Panicked(_) => (),
+                PlayerHandle::Respawning(_, Ticks(t)) if *t > 0 => *t -= 1,
+                PlayerHandle::Respawning(h, _) => {
+                    *handle = PlayerHandle::ReadyToSpawn(h.clone());
+                },
+            }
+        }
+    }
+}
+
+fn skeleton_cleanup_system(
+    mut commands: Commands,
+    time: Res<Time>,
+    mut materials: ResMut<Assets<ColorMaterial>>,
+    mut skeleton_query: Query<(Entity, &Handle<ColorMaterial>, &mut Timer), With<Skeleton>>,
+) -> Result<()> {
+    for (entity, material, mut timer) in skeleton_query.iter_mut() {
+        timer.tick(time.delta());
+        // Slowly fade the skeleton
+        let material =
+            materials.get_mut(material).ok_or_else(|| anyhow!("Skeleton material not found"))?;
+        material.color.set_a(timer.percent_left());
+        if timer.just_finished() {
+            commands.entity(entity).despawn_recursive();
+        }
+    }
+
     Ok(())
 }
 

@@ -8,6 +8,7 @@ use bomber_lib::world::{Direction, Object, Ticks, Tile};
 
 use crate::{
     game_map::{GameMap, TileLocation},
+    player_behaviour::Player,
     rendering::{FLAME_Z, GAME_OBJECT_Z, TILE_WIDTH_PX},
     state::AppState,
     tick::Tick,
@@ -19,6 +20,7 @@ const BOMB_FUSE_LENGTH: Ticks = Ticks(3);
 const INITIAL_BOMB_POWER: u32 = 2;
 
 pub struct BombPlugin;
+pub struct KillPlayerEvent(pub Entity);
 
 /// Triggers a new bomb to be spawn.
 pub struct SpawnBombEvent(pub TileLocation);
@@ -52,6 +54,7 @@ impl Plugin for BombPlugin {
             drop: asset_server.load("audio/sound_effects/bomb-drop.mp3"),
         };
         app.insert_resource(textures)
+            .add_event::<KillPlayerEvent>()
             .insert_resource(sound_effects)
             .add_event::<SpawnBombEvent>()
             .add_system_set(
@@ -120,7 +123,9 @@ fn bomb_explosion_system(
     mut ticks: EventReader<Tick>,
     mut bomb_query: Query<(Entity, &TileLocation, &mut Object), With<Bomb>>,
     tile_query: Query<(&TileLocation, &Tile)>,
-    object_query: Query<(&TileLocation, &Object), Without<Bomb>>,
+    object_query: Query<(&TileLocation, &Object), (Without<Bomb>, Without<Player>)>,
+    player_query: Query<(&TileLocation, Entity), With<Player>>,
+    mut kill_events: EventWriter<KillPlayerEvent>,
     game_map_query: Query<&GameMap>,
     textures: Res<Textures>,
     audio: Res<Audio>,
@@ -153,6 +158,8 @@ fn bomb_explosion_system(
                             location,
                             &tile_query,
                             &object_query,
+                            &player_query,
+                            &mut kill_events,
                             INITIAL_BOMB_POWER,
                             game_map,
                             &textures,
@@ -174,7 +181,9 @@ fn spawn_flames(
     parent: &mut ChildBuilder,
     bomb_location: &TileLocation,
     tile_query: &Query<(&TileLocation, &Tile)>,
-    object_query: &Query<(&TileLocation, &Object), Without<Bomb>>,
+    object_query: &Query<(&TileLocation, &Object), (Without<Bomb>, Without<Player>)>,
+    player_query: &Query<(&TileLocation, Entity), With<Player>>,
+    kill_events: &mut EventWriter<KillPlayerEvent>,
     bomb_power: u32,
     game_map: &GameMap,
     textures: &Textures,
@@ -199,6 +208,12 @@ fn spawn_flames(
             if matches!(object, Some(Object::Crate)) {
                 // Flame does not extend beyond a crate.
                 break;
+            }
+
+            if let Some(player) =
+                player_query.iter().find_map(|(l, e)| if *l == location { Some(e) } else { None })
+            {
+                kill_events.send(KillPlayerEvent(player));
             }
         }
     }
