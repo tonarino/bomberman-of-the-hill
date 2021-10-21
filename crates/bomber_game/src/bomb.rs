@@ -21,6 +21,10 @@ const INITIAL_BOMB_POWER: u32 = 2;
 
 pub struct BombPlugin;
 pub struct KillPlayerEvent(pub Entity);
+pub struct BombExplodeEvent {
+    pub bomb: Entity,
+    pub location: TileLocation,
+}
 
 /// Triggers a new bomb to be spawn.
 pub struct SpawnBombEvent(pub TileLocation);
@@ -55,11 +59,13 @@ impl Plugin for BombPlugin {
         };
         app.insert_resource(textures)
             .add_event::<KillPlayerEvent>()
+            .add_event::<BombExplodeEvent>()
             .insert_resource(sound_effects)
             .add_event::<SpawnBombEvent>()
             .add_system_set(
                 SystemSet::on_update(AppState::InGame)
                     .with_system(bomb_spawn_system.system())
+                    .with_system(fuse_remaining_system.system())
                     .with_system(bomb_explosion_system.system())
                     .with_system(objects_on_fire_system.system())
                     .with_system(explosion_despawn_system.system()),
@@ -119,10 +125,31 @@ fn spawn_bomb(
     audio.play(sound_effects.drop.clone());
 }
 
-#[allow(clippy::too_many_arguments)]
-fn bomb_explosion_system(
+fn fuse_remaining_system(
     mut ticks: EventReader<Tick>,
     mut bomb_query: Query<(Entity, &TileLocation, &mut Object), With<Bomb>>,
+    mut explode_events: EventWriter<BombExplodeEvent>,
+) {
+    for _ in ticks.iter().filter(|t| matches!(t, Tick::World)) {
+        for (bomb, &location, mut object) in bomb_query.iter_mut() {
+            let should_explode = match *object {
+                Object::Bomb { ref mut fuse_remaining } => {
+                    fuse_remaining.0 = fuse_remaining.0.saturating_sub(1);
+                    fuse_remaining.0 == 0
+                },
+                _ => false,
+            };
+
+            if should_explode {
+                explode_events.send(BombExplodeEvent { bomb, location });
+            }
+        }
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn bomb_explosion_system(
+    mut exploded_bombs: EventReader<BombExplodeEvent>,
     tile_query: Query<(&TileLocation, &Tile)>,
     object_query: Query<(&TileLocation, &Object), (Without<Bomb>, Without<Player>)>,
     player_query: Query<(&TileLocation, Entity), With<Player>>,
@@ -136,44 +163,30 @@ fn bomb_explosion_system(
 ) {
     let game_map = game_map_query.single().expect("Failed to retrieve game map");
 
-    for _ in ticks.iter().filter(|t| matches!(t, Tick::World)) {
-        let mut any_bomb_exploded = false;
-        for (entity, location, mut object) in bomb_query.iter_mut() {
-            let should_explode = match *object {
-                Object::Bomb { ref mut fuse_remaining } => {
-                    fuse_remaining.0 = fuse_remaining.0.saturating_sub(1);
-                    fuse_remaining.0 == 0
-                },
-                _ => false,
-            };
+    let mut any_bomb_exploded = false;
+    for BombExplodeEvent { bomb, location } in exploded_bombs.iter() {
+        commands.entity(*bomb).despawn_recursive();
+        commands.spawn().insert(Explosion).insert_bundle(SpriteBundle::default()).with_children(
+            |parent| {
+                spawn_flames(
+                    parent,
+                    location,
+                    &tile_query,
+                    &object_query,
+                    &player_query,
+                    &mut kill_events,
+                    INITIAL_BOMB_POWER,
+                    game_map,
+                    &textures,
+                    &mut materials,
+                );
+            },
+        );
+        any_bomb_exploded = true;
+    }
 
-            if should_explode {
-                commands.entity(entity).despawn_recursive();
-                commands
-                    .spawn()
-                    .insert(Explosion)
-                    .insert_bundle(SpriteBundle::default())
-                    .with_children(|parent| {
-                        spawn_flames(
-                            parent,
-                            location,
-                            &tile_query,
-                            &object_query,
-                            &player_query,
-                            &mut kill_events,
-                            INITIAL_BOMB_POWER,
-                            game_map,
-                            &textures,
-                            &mut materials,
-                        );
-                    });
-                any_bomb_exploded = true;
-            }
-        }
-
-        if any_bomb_exploded {
-            audio.play(sound_effects.explosion.clone());
-        }
+    if any_bomb_exploded {
+        audio.play(sound_effects.explosion.clone());
     }
 }
 
