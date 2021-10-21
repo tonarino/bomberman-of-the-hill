@@ -61,6 +61,7 @@ impl Plugin for BombPlugin {
                 SystemSet::on_update(AppState::InGame)
                     .with_system(bomb_spawn_system.system())
                     .with_system(bomb_explosion_system.system())
+                    .with_system(objects_on_fire_system.system())
                     .with_system(explosion_despawn_system.system()),
             )
             .add_system_set(SystemSet::on_exit(AppState::InGame).with_system(cleanup.system()));
@@ -234,6 +235,20 @@ fn spawn_flame(
         sprite: Sprite::new(Vec2::splat(TILE_WIDTH_PX)),
         ..Default::default()
     });
+}
+
+/// Handle objects being blasted by bomb's explosion.
+fn objects_on_fire_system(
+    flame_query: Query<&TileLocation, With<Flame>>,
+    object_query: Query<(Entity, &TileLocation), With<Object>>,
+    mut commands: Commands,
+) {
+    for (entity, location) in object_query.iter() {
+        let on_fire = flame_query.iter().any(|l| *l == *location);
+        if on_fire {
+            commands.entity(entity).despawn_recursive();
+        }
+    }
 }
 
 fn explosion_despawn_system(

@@ -6,7 +6,6 @@ use bomber_lib::world::{Direction, Object, Tile, TileOffset};
 use rand::Rng;
 
 use crate::{
-    bomb::Flame,
     log_unrecoverable_error_and_panic,
     rendering::{GAME_MAP_Z, GAME_OBJECT_Z, TILE_HEIGHT_PX, TILE_WIDTH_PX},
     state::AppState,
@@ -52,9 +51,6 @@ impl Plugin for GameMapPlugin {
                 SystemSet::on_enter(AppState::InGame)
                     .with_system(setup.system().chain(log_unrecoverable_error_and_panic.system())),
             )
-            .add_system_set(
-                SystemSet::on_update(AppState::InGame).with_system(object_despawn_system.system()),
-            )
             // Keep the game map on the victory screen as the background.
             .add_system_set(
                 SystemSet::on_exit(AppState::VictoryScreen)
@@ -73,19 +69,6 @@ fn setup(
         &textures,
         &mut materials,
     )
-}
-
-fn object_despawn_system(
-    flame_query: Query<&TileLocation, With<Flame>>,
-    object_query: Query<(Entity, &TileLocation), With<Object>>,
-    mut commands: Commands,
-) {
-    for (entity, location) in object_query.iter() {
-        let on_fire = flame_query.iter().any(|l| *l == *location);
-        if on_fire {
-            commands.entity(entity).despawn_recursive();
-        }
-    }
 }
 
 fn cleanup(game_map_query: Query<Entity, With<GameMap>>, mut commands: Commands) -> Result<()> {
