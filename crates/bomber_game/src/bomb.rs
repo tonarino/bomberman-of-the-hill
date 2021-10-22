@@ -250,12 +250,8 @@ fn objects_on_fire_system(
     mut explode_events: EventWriter<BombExplodeEvent>,
     mut commands: Commands,
 ) {
-    for (entity, location, object) in object_query.iter() {
-        let on_fire = flame_query.iter().any(|l| *l == *location);
-        if !on_fire {
-            continue;
-        }
-
+    let on_fire = |&(_, location, _): &(_, _, _)| flame_query.iter().any(|l| l == location);
+    for (entity, location, object) in object_query.iter().filter(on_fire) {
         match object {
             Object::Bomb { .. } => {
                 explode_events.send(BombExplodeEvent { bomb: entity, location: *location })
