@@ -253,13 +253,21 @@ fn spawn_flame(
 /// Handle objects being blasted by bomb's explosion.
 fn objects_on_fire_system(
     flame_query: Query<&TileLocation, With<Flame>>,
-    object_query: Query<(Entity, &TileLocation), With<Object>>,
+    object_query: Query<(Entity, &TileLocation, &Object)>,
+    mut explode_events: EventWriter<BombExplodeEvent>,
     mut commands: Commands,
 ) {
-    for (entity, location) in object_query.iter() {
+    for (entity, location, object) in object_query.iter() {
         let on_fire = flame_query.iter().any(|l| *l == *location);
-        if on_fire {
-            commands.entity(entity).despawn_recursive();
+        if !on_fire {
+            continue;
+        }
+
+        match object {
+            Object::Bomb { .. } => {
+                explode_events.send(BombExplodeEvent { bomb: entity, location: *location })
+            },
+            Object::Crate => commands.entity(entity).despawn_recursive(),
         }
     }
 }
