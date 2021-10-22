@@ -85,16 +85,14 @@ fn bomb_spawn_system(
 ) {
     let game_map = game_map_query.single().expect("Failed to retrive game map");
 
+    let mut any_bomb_spawned = false;
     for SpawnBombEvent(location) in spawn_event_reader.iter() {
-        spawn_bomb(
-            location,
-            game_map,
-            &textures,
-            &audio,
-            &sound_effects,
-            &mut materials,
-            &mut commands,
-        );
+        spawn_bomb(location, game_map, &textures, &mut materials, &mut commands);
+        any_bomb_spawned = true;
+    }
+
+    if any_bomb_spawned {
+        audio.play(sound_effects.drop.clone());
     }
 }
 
@@ -102,8 +100,6 @@ fn spawn_bomb(
     location: &TileLocation,
     game_map: &GameMap,
     textures: &Textures,
-    audio: &Audio,
-    sound_effects: &SoundEffects,
     materials: &mut Assets<ColorMaterial>,
     commands: &mut Commands,
 ) {
@@ -120,9 +116,6 @@ fn spawn_bomb(
             sprite: Sprite::new(Vec2::splat(TILE_WIDTH_PX)),
             ..Default::default()
         });
-
-    // TODO(ryo): It should play only once even if multiple bombs are spawn at the current tick.
-    audio.play(sound_effects.drop.clone());
 }
 
 fn fuse_remaining_system(
