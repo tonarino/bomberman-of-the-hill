@@ -8,7 +8,9 @@ longer it's held, the bigger the score and bounty for taking them down!
 Build either of the plugins with:
 
 * `cargo build -p fool --target wasm32-unknown-unknown`
+
 or
+
 * `cargo build -p wanderer --target wasm32-unknown-unknown`
 
 This will generate `.wasm` files under `target/wasm32-unknown-unknown/debug/`
