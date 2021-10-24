@@ -15,7 +15,7 @@ use crate::{
 };
 
 // A bomb explodes after this number of ticks since it's placed on the map.
-const BOMB_FUSE_LENGTH: Ticks = Ticks(3);
+const BOMB_FUSE_LENGTH: Ticks = Ticks(4);
 // The initial number of tiles that an explosion reach in each direction.
 const INITIAL_BOMB_POWER: u32 = 2;
 

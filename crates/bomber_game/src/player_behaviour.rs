@@ -35,7 +35,7 @@ pub struct PlayerName(pub String);
 pub struct Player;
 
 /// How far player characters can see their surroundings
-const PLAYER_VIEW_TAXICAB_DISTANCE: u32 = 3;
+const PLAYER_VIEW_TAXICAB_DISTANCE: u32 = 5;
 
 /// Visual representation of a dead player
 struct Skeleton;
@@ -373,9 +373,15 @@ fn apply_action(
             Ok(())
         },
         Action::DropBomb => {
-            info!("{} drops a bomb at {:?}", player_name.0, player_location);
             // TODO(ryo): Decrement the number of bombs the player carries.
             spawn_bomb_event.send(SpawnBombEvent(*player_location));
+            Ok(())
+        },
+        Action::DropBombAndMove(direction) => {
+            let bomb_location = *player_location;
+            move_player(player_name, player_location, direction, tile_query, object_query)?;
+            info!("{} drops a bomb at {:?} while moving", player_name.0, bomb_location);
+            spawn_bomb_event.send(SpawnBombEvent(bomb_location));
             Ok(())
         },
     }

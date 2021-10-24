@@ -31,6 +31,8 @@ pub enum Action {
     StayStill,
     /// Places a bomb at the player's current location.
     DropBomb,
+    /// Places a bomb at the player's current location while moving.
+    DropBombAndMove(Direction),
 }
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]

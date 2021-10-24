@@ -30,7 +30,7 @@ impl Player for Wanderer {
         // Drops a bomb every once in a while.
         if self.bomb_ticks >= 3 {
             self.bomb_ticks = 0;
-            return Action::DropBomb;
+            return Action::DropBombAndMove(self.preferred_direction);
         }
         self.bomb_ticks += 1;
 
