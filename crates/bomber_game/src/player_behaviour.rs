@@ -250,7 +250,7 @@ fn player_positioning_system(
 /// complex actions.
 fn player_action_system(
     mut player_query: Query<
-        (&mut TileLocation, &mut wasmtime::Store<()>, &wasmtime::Instance, &PlayerName),
+        (&mut TileLocation, &mut wasmtime::Store<()>, &wasmtime::Instance, &PlayerName, Entity),
         With<Player>,
     >,
     tile_query: Query<(&TileLocation, &Tile), (Without<Player>, Without<Object>)>,
@@ -259,12 +259,15 @@ fn player_action_system(
     mut ticks: EventReader<Tick>,
 ) -> Result<()> {
     for _ in ticks.iter().filter(|t| matches!(t, Tick::Player)) {
-        for (mut location, mut store, instance, player_name) in player_query.iter_mut() {
+        for (mut location, mut store, instance, player_name, player_entity) in
+            player_query.iter_mut()
+        {
             let action =
                 wasm_player_action(&mut store, instance, &location, &tile_query, &object_query)?;
             if let Err(e) = apply_action(
                 action,
                 player_name,
+                player_entity,
                 &tile_query,
                 &object_query,
                 &mut spawn_bomb_event,
@@ -357,6 +360,7 @@ fn skeleton_cleanup_system(
 fn apply_action(
     action: Action,
     player_name: &PlayerName,
+    player_entity: Entity,
     tile_query: &Query<(&TileLocation, &Tile), (Without<Player>, Without<Object>)>,
     object_query: &Query<(&TileLocation, &Object), (Without<Player>, Without<Tile>)>,
     spawn_bomb_event: &mut EventWriter<SpawnBombEvent>,
@@ -366,22 +370,17 @@ fn apply_action(
         Action::Move(direction) => {
             move_player(player_name, player_location, direction, tile_query, object_query)
         },
-        Action::StayStill => {
-            let PlayerName(player_name) = player_name;
-
-            info!("{} decides to stay still at {:?}", player_name, player_location);
-            Ok(())
-        },
+        Action::StayStill => Ok(()),
         Action::DropBomb => {
             // TODO(ryo): Decrement the number of bombs the player carries.
-            spawn_bomb_event.send(SpawnBombEvent(*player_location));
+            spawn_bomb_event
+                .send(SpawnBombEvent { location: *player_location, owner: player_entity });
             Ok(())
         },
         Action::DropBombAndMove(direction) => {
             let bomb_location = *player_location;
             move_player(player_name, player_location, direction, tile_query, object_query)?;
-            info!("{} drops a bomb at {:?} while moving", player_name.0, bomb_location);
-            spawn_bomb_event.send(SpawnBombEvent(bomb_location));
+            spawn_bomb_event.send(SpawnBombEvent { location: bomb_location, owner: player_entity });
             Ok(())
         },
     }
