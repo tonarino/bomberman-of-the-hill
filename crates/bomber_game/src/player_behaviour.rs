@@ -1,9 +1,6 @@
 //! Defines a Bevy plugin that governs spawning and despawning players from .wasm handles,
 //! as well as the continuous behaviour of players as they exist in the game world.
 
-// Disabling lint for the module because of the ubiquitous Bevy queries.
-#![allow(clippy::type_complexity)]
-
 use std::time::Duration;
 
 use anyhow::{anyhow, Result};
@@ -96,7 +93,6 @@ impl Plugin for PlayerBehaviourPlugin {
 
 /// Ensures the number of active live players matches the `.wasm` files under `assets/players`
 /// at all times, by recursively spawning and despawning players.
-#[allow(clippy::too_many_arguments)]
 fn player_spawn_system(
     mut commands: Commands,
     mut handles: ResMut<PlayerHandles>,
@@ -151,7 +147,6 @@ fn player_spawn_system(
 /// Loads the `.wasm` bytes, JIT compiles them and stores all player-related state
 /// in an entity. The import functions binding is done here, which means players effectively
 /// get a "callback" into the world to use as they remain alive.
-#[allow(clippy::too_many_arguments)]
 fn spawn_player(
     handle: &mut PlayerHandle,
     location: TileLocation,

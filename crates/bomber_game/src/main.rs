@@ -62,14 +62,12 @@ fn setup(mut commands: Commands) {
     commands.spawn_bundle(UiCameraBundle::default());
 }
 
-#[allow(unused)]
 fn log_recoverable_error(In(result): In<Result<()>>) {
     if let Err(e) = result {
         error!("Unhandled error: {}", e);
     }
 }
 
-#[allow(unused)]
 fn log_unrecoverable_error_and_panic(In(result): In<Result<()>>) {
     if let Err(e) = result {
         error!("Unrecoverable error: {}", e);
