@@ -33,9 +33,11 @@ pub struct PlayerBehaviourPlugin;
 pub struct PlayerName(pub String);
 /// Marks a player
 pub struct Player;
+/// Used to mark objects owned by a player entity, such as placed bombs
+pub struct Owner(pub Entity);
 
 /// How far player characters can see their surroundings
-const PLAYER_VIEW_TAXICAB_DISTANCE: u32 = 3;
+const PLAYER_VIEW_TAXICAB_DISTANCE: u32 = 5;
 
 /// Visual representation of a dead player
 struct Skeleton;
@@ -250,7 +252,7 @@ fn player_positioning_system(
 /// complex actions.
 fn player_action_system(
     mut player_query: Query<
-        (&mut TileLocation, &mut wasmtime::Store<()>, &wasmtime::Instance, &PlayerName),
+        (Entity, &mut TileLocation, &mut wasmtime::Store<()>, &wasmtime::Instance, &PlayerName),
         With<Player>,
     >,
     tile_query: Query<(&TileLocation, &Tile), (Without<Player>, Without<Object>)>,
@@ -259,12 +261,15 @@ fn player_action_system(
     mut ticks: EventReader<Tick>,
 ) -> Result<()> {
     for _ in ticks.iter().filter(|t| matches!(t, Tick::Player)) {
-        for (mut location, mut store, instance, player_name) in player_query.iter_mut() {
+        for (player_entity, mut location, mut store, instance, player_name) in
+            player_query.iter_mut()
+        {
             let action =
                 wasm_player_action(&mut store, instance, &location, &tile_query, &object_query)?;
             if let Err(e) = apply_action(
                 action,
                 player_name,
+                player_entity,
                 &tile_query,
                 &object_query,
                 &mut spawn_bomb_event,
@@ -357,6 +362,7 @@ fn skeleton_cleanup_system(
 fn apply_action(
     action: Action,
     player_name: &PlayerName,
+    player_entity: Entity,
     tile_query: &Query<(&TileLocation, &Tile), (Without<Player>, Without<Object>)>,
     object_query: &Query<(&TileLocation, &Object), (Without<Player>, Without<Tile>)>,
     spawn_bomb_event: &mut EventWriter<SpawnBombEvent>,
@@ -366,16 +372,16 @@ fn apply_action(
         Action::Move(direction) => {
             move_player(player_name, player_location, direction, tile_query, object_query)
         },
-        Action::StayStill => {
-            let PlayerName(player_name) = player_name;
-
-            info!("{} decides to stay still at {:?}", player_name, player_location);
+        Action::StayStill => Ok(()),
+        Action::DropBomb => {
+            spawn_bomb_event
+                .send(SpawnBombEvent { location: *player_location, owner: player_entity });
             Ok(())
         },
-        Action::DropBomb => {
-            info!("{} drops a bomb at {:?}", player_name.0, player_location);
-            // TODO(ryo): Decrement the number of bombs the player carries.
-            spawn_bomb_event.send(SpawnBombEvent(*player_location));
+        Action::DropBombAndMove(direction) => {
+            let bomb_location = *player_location;
+            move_player(player_name, player_location, direction, tile_query, object_query)?;
+            spawn_bomb_event.send(SpawnBombEvent { location: bomb_location, owner: player_entity });
             Ok(())
         },
     }

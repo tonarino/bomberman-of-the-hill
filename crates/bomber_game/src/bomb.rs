@@ -2,22 +2,24 @@
 
 // Disabling lint for the module because of the ubiquitous Bevy queries.
 #![allow(clippy::type_complexity)]
+#![allow(clippy::too_many_arguments)]
 
 use bevy::prelude::*;
 use bomber_lib::world::{Direction, Object, Ticks, Tile};
 
 use crate::{
     game_map::{GameMap, TileLocation},
-    player_behaviour::Player,
+    player_behaviour::{Owner, Player},
     rendering::{FLAME_Z, GAME_OBJECT_Z, TILE_WIDTH_PX},
     state::AppState,
     tick::Tick,
 };
 
 // A bomb explodes after this number of ticks since it's placed on the map.
-const BOMB_FUSE_LENGTH: Ticks = Ticks(3);
+const BOMB_FUSE_LENGTH: Ticks = Ticks(4);
 // The initial number of tiles that an explosion reach in each direction.
 const INITIAL_BOMB_POWER: u32 = 2;
+const MAXIMUM_SIMULTANEOUS_BOMBS: usize = 2;
 
 pub struct BombPlugin;
 pub struct KillPlayerEvent(pub Entity);
@@ -27,7 +29,10 @@ pub struct BombExplodeEvent {
 }
 
 /// Triggers a new bomb to be spawn.
-pub struct SpawnBombEvent(pub TileLocation);
+pub struct SpawnBombEvent {
+    pub location: TileLocation,
+    pub owner: Entity,
+}
 /// Marks a bomb placed on the game map.
 struct Bomb;
 /// Marks the center of an explosion with flames in each direction.
@@ -77,6 +82,7 @@ impl Plugin for BombPlugin {
 fn bomb_spawn_system(
     mut spawn_event_reader: EventReader<SpawnBombEvent>,
     game_map_query: Query<&GameMap>,
+    bomb_query: Query<&Owner, With<Bomb>>,
     textures: Res<Textures>,
     audio: Res<Audio>,
     sound_effects: Res<SoundEffects>,
@@ -86,9 +92,13 @@ fn bomb_spawn_system(
     let game_map = game_map_query.single().expect("Failed to retrive game map");
 
     let mut any_bomb_spawned = false;
-    for SpawnBombEvent(location) in spawn_event_reader.iter() {
-        spawn_bomb(location, game_map, &textures, &mut materials, &mut commands);
-        any_bomb_spawned = true;
+    for SpawnBombEvent { location, owner } in spawn_event_reader.iter() {
+        if bomb_query.iter().filter(|Owner(o)| owner == o).count() < MAXIMUM_SIMULTANEOUS_BOMBS {
+            spawn_bomb(location, *owner, game_map, &textures, &mut materials, &mut commands);
+            any_bomb_spawned = true;
+        } else {
+            info!("Failed to spawn bomb: User is at maximum bomb count");
+        }
     }
 
     if any_bomb_spawned {
@@ -98,6 +108,7 @@ fn bomb_spawn_system(
 
 fn spawn_bomb(
     location: &TileLocation,
+    owner: Entity,
     game_map: &GameMap,
     textures: &Textures,
     materials: &mut Assets<ColorMaterial>,
@@ -106,6 +117,7 @@ fn spawn_bomb(
     commands
         .spawn()
         .insert(Bomb)
+        .insert(Owner(owner))
         .insert(Object::Bomb { fuse_remaining: BOMB_FUSE_LENGTH })
         .insert(*location)
         .insert_bundle(SpriteBundle {
