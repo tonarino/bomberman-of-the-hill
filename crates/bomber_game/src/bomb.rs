@@ -9,7 +9,7 @@ use bomber_lib::world::{Direction, Object, Ticks, Tile};
 
 use crate::{
     game_map::{GameMap, TileLocation},
-    player_behaviour::Player,
+    player_behaviour::{Owner, Player},
     rendering::{FLAME_Z, GAME_OBJECT_Z, TILE_WIDTH_PX},
     state::AppState,
     tick::Tick,
@@ -34,9 +34,7 @@ pub struct SpawnBombEvent {
     pub owner: Entity,
 }
 /// Marks a bomb placed on the game map.
-struct Bomb {
-    owner: Entity,
-}
+struct Bomb;
 /// Marks the center of an explosion with flames in each direction.
 struct Explosion;
 /// Marks a flame placed on the game map.
@@ -84,7 +82,7 @@ impl Plugin for BombPlugin {
 fn bomb_spawn_system(
     mut spawn_event_reader: EventReader<SpawnBombEvent>,
     game_map_query: Query<&GameMap>,
-    bomb_query: Query<&Bomb>,
+    bomb_query: Query<&Owner, With<Bomb>>,
     textures: Res<Textures>,
     audio: Res<Audio>,
     sound_effects: Res<SoundEffects>,
@@ -95,9 +93,7 @@ fn bomb_spawn_system(
 
     let mut any_bomb_spawned = false;
     for SpawnBombEvent { location, owner } in spawn_event_reader.iter() {
-        if bomb_query.iter().filter(|Bomb { owner: o }| owner == o).count()
-            < MAXIMUM_SIMULTANEOUS_BOMBS
-        {
+        if bomb_query.iter().filter(|Owner(o)| owner == o).count() < MAXIMUM_SIMULTANEOUS_BOMBS {
             spawn_bomb(location, *owner, game_map, &textures, &mut materials, &mut commands);
             any_bomb_spawned = true;
         } else {
@@ -120,7 +116,8 @@ fn spawn_bomb(
 ) {
     commands
         .spawn()
-        .insert(Bomb { owner })
+        .insert(Bomb)
+        .insert(Owner(owner))
         .insert(Object::Bomb { fuse_remaining: BOMB_FUSE_LENGTH })
         .insert(*location)
         .insert_bundle(SpriteBundle {

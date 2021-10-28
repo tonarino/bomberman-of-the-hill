@@ -33,6 +33,8 @@ pub struct PlayerBehaviourPlugin;
 pub struct PlayerName(pub String);
 /// Marks a player
 pub struct Player;
+/// Used to mark objects owned by a player entity, such as placed bombs
+pub struct Owner(pub Entity);
 
 /// How far player characters can see their surroundings
 const PLAYER_VIEW_TAXICAB_DISTANCE: u32 = 5;
@@ -250,7 +252,7 @@ fn player_positioning_system(
 /// complex actions.
 fn player_action_system(
     mut player_query: Query<
-        (&mut TileLocation, &mut wasmtime::Store<()>, &wasmtime::Instance, &PlayerName, Entity),
+        (Entity, &mut TileLocation, &mut wasmtime::Store<()>, &wasmtime::Instance, &PlayerName),
         With<Player>,
     >,
     tile_query: Query<(&TileLocation, &Tile), (Without<Player>, Without<Object>)>,
@@ -259,7 +261,7 @@ fn player_action_system(
     mut ticks: EventReader<Tick>,
 ) -> Result<()> {
     for _ in ticks.iter().filter(|t| matches!(t, Tick::Player)) {
-        for (mut location, mut store, instance, player_name, player_entity) in
+        for (player_entity, mut location, mut store, instance, player_name) in
             player_query.iter_mut()
         {
             let action =
@@ -372,7 +374,6 @@ fn apply_action(
         },
         Action::StayStill => Ok(()),
         Action::DropBomb => {
-            // TODO(ryo): Decrement the number of bombs the player carries.
             spawn_bomb_event
                 .send(SpawnBombEvent { location: *player_location, owner: player_entity });
             Ok(())
