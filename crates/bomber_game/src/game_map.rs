@@ -18,7 +18,7 @@ pub const CRATE_HEAVY_CROSS_ARENA_SMALL: &str =
 /// Activating this plugin automatically spawns a game map on startup.
 pub struct GameMapPlugin;
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, Component)]
 pub struct GameMap {
     width: usize,
     height: usize,
@@ -26,18 +26,18 @@ pub struct GameMap {
 
 /// Spawners (represented with a `s` in textual form) designate the tiles in
 /// which player characters can appear.
-#[derive(Copy, Clone, Debug)]
+#[derive(Component, Copy, Clone, Debug)]
 pub struct PlayerSpawner;
 
 pub struct Textures {
-    pub wall: Handle<Texture>,
-    pub floor: Handle<Texture>,
-    pub hill: Handle<Texture>,
-    pub breakable: Handle<Texture>,
+    pub wall: Handle<Image>,
+    pub floor: Handle<Image>,
+    pub hill: Handle<Image>,
+    pub breakable: Handle<Image>,
 }
 
 impl Plugin for GameMapPlugin {
-    fn build(&self, app: &mut AppBuilder) {
+    fn build(&self, app: &mut App) {
         let asset_server =
             app.world().get_resource::<AssetServer>().expect("Failed to retrieve asset server");
         let textures = Textures {
@@ -150,7 +150,7 @@ impl GameMap {
             Tile::Hill => &textures.hill,
         };
         parent.spawn().insert(tile).insert(location).insert_bundle(SpriteBundle {
-            material: materials.add(texture.clone().into()),
+            texture,
             transform: Transform::from_translation(
                 location.as_world_coordinates(game_map).extend(GAME_MAP_Z),
             ),
@@ -174,7 +174,7 @@ impl GameMap {
             },
         };
         parent.spawn().insert(object).insert(location).insert_bundle(SpriteBundle {
-            material: materials.add(texture.clone().into()),
+            texture,
             transform: Transform::from_translation(
                 location.as_world_coordinates(game_map).extend(GAME_OBJECT_Z),
             ),
@@ -186,7 +186,7 @@ impl GameMap {
     }
 }
 
-#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+#[derive(Component, Copy, Clone, Debug, Eq, PartialEq)]
 pub struct TileLocation(pub usize, pub usize);
 
 impl TileLocation {

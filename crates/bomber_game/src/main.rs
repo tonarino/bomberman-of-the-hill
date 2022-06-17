@@ -1,7 +1,10 @@
+use std::ops::Deref;
+
 use anyhow::Result;
 use bevy::prelude::*;
 
 use bomb::BombPlugin;
+use bomber_lib::world::Object;
 use game_map::GameMapPlugin;
 use player_behaviour::PlayerBehaviourPlugin;
 use player_hotswap::PlayerHotswapPlugin;
@@ -20,8 +23,14 @@ mod state;
 mod tick;
 mod victory_screen;
 
+// Newtype wrapper to work around orphan rule (for the bevy `Component` trait)
+#[derive(Component)]
+pub struct OrphanComponent<T>(pub T);
+
+impl<T> Deref for OrphanComponent<T> {}
+
 fn main() -> Result<()> {
-    App::build()
+    App::new()
         .add_plugins(DefaultPlugins)
         .add_plugin(AppStatePlugin)
         .add_plugin(GameMapPlugin)

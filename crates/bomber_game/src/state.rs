@@ -20,10 +20,11 @@ pub enum AppState {
 const GAME_DURATION: Duration = Duration::from_secs(5 * 60);
 const VICTORY_SCREEN_DURATION: Duration = Duration::from_secs(30);
 
+#[derive(Component)]
 pub struct AppStateTimer;
 
 impl Plugin for AppStatePlugin {
-    fn build(&self, app: &mut AppBuilder) {
+    fn build(&self, app: &mut App) {
         app.add_startup_system(setup.system())
             .add_system(app_state_system.system().chain(log_unrecoverable_error_and_panic.system()))
             .add_state(AppState::InGame);

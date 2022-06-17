@@ -13,6 +13,7 @@ use crate::{
     rendering::{FLAME_Z, GAME_OBJECT_Z, TILE_WIDTH_PX},
     state::AppState,
     tick::Tick,
+    OrphanComponent,
 };
 
 // A bomb explodes after this number of ticks since it's placed on the map.
@@ -34,15 +35,18 @@ pub struct SpawnBombEvent {
     pub owner: Entity,
 }
 /// Marks a bomb placed on the game map.
+#[derive(Component)]
 struct Bomb;
 /// Marks the center of an explosion with flames in each direction.
+#[derive(Component)]
 struct Explosion;
 /// Marks a flame placed on the game map.
+#[derive(Component)]
 pub struct Flame;
 
 struct Textures {
-    bomb: Handle<Texture>,
-    flame: Handle<Texture>,
+    bomb: Handle<Image>,
+    flame: Handle<Image>,
 }
 
 struct SoundEffects {
@@ -51,7 +55,7 @@ struct SoundEffects {
 }
 
 impl Plugin for BombPlugin {
-    fn build(&self, app: &mut AppBuilder) {
+    fn build(&self, app: &mut App) {
         let asset_server =
             app.world().get_resource::<AssetServer>().expect("Failed to retrieve asset server");
         let textures = Textures {
@@ -121,7 +125,7 @@ fn spawn_bomb(
         .insert(Object::Bomb { fuse_remaining: BOMB_FUSE_LENGTH })
         .insert(*location)
         .insert_bundle(SpriteBundle {
-            material: materials.add(textures.bomb.clone().into()),
+            texture: textures.bomb,
             transform: Transform::from_translation(
                 location.as_world_coordinates(game_map).extend(GAME_OBJECT_Z),
             ),
@@ -132,7 +136,7 @@ fn spawn_bomb(
 
 fn fuse_remaining_system(
     mut ticks: EventReader<Tick>,
-    mut bomb_query: Query<(Entity, &TileLocation, &mut Object), With<Bomb>>,
+    mut bomb_query: Query<(Entity, &TileLocation, &mut OrphanComponent<Object>), With<Bomb>>,
     mut explode_events: EventWriter<BombExplodeEvent>,
 ) {
     for _ in ticks.iter().filter(|t| matches!(t, Tick::World)) {
@@ -155,8 +159,11 @@ fn fuse_remaining_system(
 #[allow(clippy::too_many_arguments)]
 fn bomb_explosion_system(
     mut exploded_bombs: EventReader<BombExplodeEvent>,
-    tile_query: Query<(&TileLocation, &Tile)>,
-    object_query: Query<(&TileLocation, &Object), (Without<Bomb>, Without<Player>)>,
+    tile_query: Query<(&TileLocation, &OrphanComponent<Tile>)>,
+    object_query: Query<
+        (&TileLocation, &OrphanComponent<Object>),
+        (Without<Bomb>, Without<Player>),
+    >,
     player_query: Query<(&TileLocation, Entity), With<Player>>,
     mut kill_events: EventWriter<KillPlayerEvent>,
     game_map_query: Query<&GameMap>,
@@ -199,8 +206,11 @@ fn bomb_explosion_system(
 fn spawn_flames(
     parent: &mut ChildBuilder,
     bomb_location: &TileLocation,
-    tile_query: &Query<(&TileLocation, &Tile)>,
-    object_query: &Query<(&TileLocation, &Object), (Without<Bomb>, Without<Player>)>,
+    tile_query: &Query<(&TileLocation, &OrphanComponent<Tile>)>,
+    object_query: &Query<
+        (&TileLocation, &OrphanComponent<Object>),
+        (Without<Bomb>, Without<Player>),
+    >,
     player_query: &Query<(&TileLocation, Entity), With<Player>>,
     kill_events: &mut EventWriter<KillPlayerEvent>,
     bomb_power: u32,
@@ -246,7 +256,7 @@ fn spawn_flame(
     materials: &mut Assets<ColorMaterial>,
 ) {
     parent.spawn().insert(Flame).insert(*location).insert_bundle(SpriteBundle {
-        material: materials.add(textures.flame.clone().into()),
+        texture: textures.flame,
         transform: Transform::from_translation(
             location.as_world_coordinates(game_map).extend(FLAME_Z),
         ),
@@ -258,7 +268,7 @@ fn spawn_flame(
 /// Handle objects being blasted by bomb's explosion.
 fn objects_on_fire_system(
     flame_query: Query<&TileLocation, With<Flame>>,
-    object_query: Query<(Entity, &TileLocation, &Object)>,
+    object_query: Query<(Entity, &TileLocation, &OrphanComponent<Object>)>,
     mut explode_events: EventWriter<BombExplodeEvent>,
     mut commands: Commands,
 ) {

@@ -12,7 +12,9 @@ use bevy::prelude::*;
 /// a bomb the same frame it explodes).
 pub struct TickPlugin;
 
+#[derive(Component)]
 struct TickTimer;
+#[derive(Component)]
 struct TickCounter(u32);
 
 const TICK_PERIOD: Duration = Duration::from_millis(500);
@@ -25,7 +27,7 @@ pub enum Tick {
 }
 
 impl Plugin for TickPlugin {
-    fn build(&self, app: &mut AppBuilder) {
+    fn build(&self, app: &mut App) {
         app.add_event::<Tick>()
             .add_system_set(SystemSet::on_enter(AppState::InGame).with_system(setup.system()))
             .add_system_set(

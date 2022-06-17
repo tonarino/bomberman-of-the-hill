@@ -27,19 +27,25 @@ use crate::{
     score::Score,
     state::AppState,
     tick::Tick,
+    OrphanComponent,
 };
 
 pub struct PlayerBehaviourPlugin;
+
+#[derive(Component)]
 pub struct PlayerName(pub String);
 /// Marks a player
+#[derive(Component)]
 pub struct Player;
 /// Used to mark objects owned by a player entity, such as placed bombs
+#[derive(Component)]
 pub struct Owner(pub Entity);
 
 /// How far player characters can see their surroundings
 const PLAYER_VIEW_TAXICAB_DISTANCE: u32 = 5;
 
 /// Visual representation of a dead player
+#[derive(Component)]
 struct Skeleton;
 /// It's OK to use seconds rather than ticks for the skeleton as it's just a
 /// visual representation for fun.
@@ -48,7 +54,7 @@ const SKELETON_DURATION: Duration = Duration::from_secs(3);
 const RESPAWN_TIME: Ticks = Ticks(3);
 
 impl Plugin for PlayerBehaviourPlugin {
-    fn build(&self, app: &mut AppBuilder) {
+    fn build(&self, app: &mut App) {
         app.insert_resource(wasmtime::Engine::default())
             .add_system_set(
                 SystemSet::on_update(AppState::InGame)
@@ -83,7 +89,7 @@ fn player_spawn_system(
     game_map_query: Query<&GameMap>,
     mut player_query: Query<(Entity, &mut Handle<WasmPlayerAsset>, &TileLocation), With<Player>>,
     spawner_query: Query<&TileLocation, With<PlayerSpawner>>,
-    object_query: Query<&TileLocation, With<Object>>,
+    object_query: Query<&TileLocation, With<OrphanComponent<Object>>>,
     engine: Res<wasmtime::Engine>,
     asset_server: Res<AssetServer>,
     assets: Res<Assets<WasmPlayerAsset>>,
@@ -191,7 +197,7 @@ fn spawn_player(
         .insert(PlayerName(name.clone()))
         .insert(Score(0))
         .insert_bundle(SpriteBundle {
-            material: materials.add(texture_handle.into()),
+            texture: texture_handle,
             transform: Transform::from_translation(
                 location.as_world_coordinates(game_map).extend(PLAYER_Z)
                     + Vec3::new(0.0, PLAYER_VERTICAL_OFFSET_PX, 0.0),
@@ -252,11 +258,23 @@ fn player_positioning_system(
 /// complex actions.
 fn player_action_system(
     mut player_query: Query<
-        (Entity, &mut TileLocation, &mut wasmtime::Store<()>, &wasmtime::Instance, &PlayerName),
+        (
+            Entity,
+            &mut TileLocation,
+            &mut OrphanComponent<wasmtime::Store<()>>,
+            &OrphanComponent<wasmtime::Instance>,
+            &PlayerName,
+        ),
         With<Player>,
     >,
-    tile_query: Query<(&TileLocation, &Tile), (Without<Player>, Without<Object>)>,
-    object_query: Query<(&TileLocation, &Object), (Without<Player>, Without<Tile>)>,
+    tile_query: Query<
+        (&TileLocation, &OrphanComponent<Tile>),
+        (Without<Player>, Without<OrphanComponent<Object>>),
+    >,
+    object_query: Query<
+        (&TileLocation, &OrphanComponent<Object>),
+        (Without<Player>, Without<OrphanComponent<Tile>>),
+    >,
     mut spawn_bomb_event: EventWriter<SpawnBombEvent>,
     mut ticks: EventReader<Tick>,
 ) -> Result<()> {
@@ -308,7 +326,7 @@ fn player_death_system(
             commands
                 .spawn()
                 .insert_bundle(SpriteBundle {
-                    material: materials.add(texture_handle.into()),
+                    texture: texture_handle,
                     transform: *transform,
                     sprite: Sprite::new(Vec2::new(SKELETON_WIDTH_PX, SKELETON_HEIGHT_PX)),
                     ..Default::default()
@@ -363,8 +381,14 @@ fn apply_action(
     action: Action,
     player_name: &PlayerName,
     player_entity: Entity,
-    tile_query: &Query<(&TileLocation, &Tile), (Without<Player>, Without<Object>)>,
-    object_query: &Query<(&TileLocation, &Object), (Without<Player>, Without<Tile>)>,
+    tile_query: &Query<
+        (&TileLocation, &OrphanComponent<Tile>),
+        (Without<Player>, Without<OrphanComponent<Object>>),
+    >,
+    object_query: &Query<
+        (&TileLocation, &OrphanComponent<Object>),
+        (Without<Player>, Without<OrphanComponent<Tile>>),
+    >,
     spawn_bomb_event: &mut EventWriter<SpawnBombEvent>,
     player_location: &mut TileLocation,
 ) -> Result<()> {
@@ -391,8 +415,14 @@ fn move_player(
     player_name: &PlayerName,
     player_location: &mut TileLocation,
     direction: Direction,
-    tile_query: &Query<(&TileLocation, &Tile), (Without<Player>, Without<Object>)>,
-    object_query: &Query<(&TileLocation, &Object), (Without<Player>, Without<Tile>)>,
+    tile_query: &Query<
+        (&TileLocation, &OrphanComponent<Tile>),
+        (Without<Player>, Without<OrphanComponent<Object>>),
+    >,
+    object_query: &Query<
+        (&TileLocation, &OrphanComponent<Object>),
+        (Without<Player>, Without<OrphanComponent<Tile>>),
+    >,
 ) -> Result<()> {
     let PlayerName(player_name) = player_name;
 
@@ -420,8 +450,14 @@ fn wasm_player_action(
     store: &mut wasmtime::Store<()>,
     instance: &wasmtime::Instance,
     player_location: &TileLocation,
-    tile_query: &Query<(&TileLocation, &Tile), (Without<Player>, Without<Object>)>,
-    object_query: &Query<(&TileLocation, &Object), (Without<Player>, Without<Tile>)>,
+    tile_query: &Query<
+        (&TileLocation, &OrphanComponent<Tile>),
+        (Without<Player>, Without<OrphanComponent<Object>>),
+    >,
+    object_query: &Query<
+        (&TileLocation, &OrphanComponent<Object>),
+        (Without<Player>, Without<OrphanComponent<Tile>>),
+    >,
 ) -> Result<Action> {
     let last_result = LastTurnResult::StoodStill; // TODO close the LastTurnResult loop.
     let player_surroundings: Vec<(Tile, Option<Object>, TileOffset)> = tile_query

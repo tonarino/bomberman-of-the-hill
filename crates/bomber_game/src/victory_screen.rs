@@ -11,7 +11,9 @@ use crate::{
 
 pub struct VictoryScreenPlugin;
 
+#[derive(Component)]
 struct VictoryScreen;
+#[derive(Component)]
 struct CountdownText;
 
 struct Fonts {
@@ -19,7 +21,7 @@ struct Fonts {
 }
 
 impl Plugin for VictoryScreenPlugin {
-    fn build(&self, app: &mut AppBuilder) {
+    fn build(&self, app: &mut App) {
         let asset_server =
             app.world().get_resource::<AssetServer>().expect("Asset server not found");
 
@@ -52,7 +54,7 @@ fn setup(
         .spawn()
         .insert(VictoryScreen)
         .insert_bundle(SpriteBundle {
-            material: materials.add(Color::rgba(0.0, 0.0, 0.0, 0.95).into()),
+            texture: Color::rgba(0.0, 0.0, 0.0, 0.95).into(),
             sprite: Sprite::new(Vec2::new(window.width(), window.height())),
             transform: Transform::from_translation(Vec3::new(0.0, 0.0, VICTORY_SCREEN_Z)),
             ..Default::default()
@@ -79,7 +81,7 @@ fn spawn_podium(
 
         // The player avatar doubled in size.
         parent.spawn().insert_bundle(SpriteBundle {
-            material: material.clone(),
+            texture: material,
             transform: Transform::from_translation(Vec3::new(0.0, 0.0, VICTORY_SCREEN_ITEMS_Z)),
             sprite: Sprite::new(Vec2::new(PLAYER_WIDTH_PX, PLAYER_HEIGHT_PX) * 2.0),
             ..Default::default()
