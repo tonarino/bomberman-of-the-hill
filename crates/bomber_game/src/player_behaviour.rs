@@ -93,9 +93,8 @@ fn player_spawn_system(
     engine: Res<wasmtime::Engine>,
     asset_server: Res<AssetServer>,
     assets: Res<Assets<WasmPlayerAsset>>,
-    mut materials: ResMut<Assets<ColorMaterial>>,
 ) {
-    let game_map = game_map_query.single().expect("Game map not found");
+    let game_map = game_map_query.single();
     // Despawn all excess players (if the wasm file was unloaded)
     for (entity, handle, _) in player_query.iter_mut() {
         if handles.0.iter().all(|h| h.inner().id != handle.id) {
@@ -130,17 +129,8 @@ fn player_spawn_system(
         .filter(|handle| player_query.iter_mut().all(|(_, h, _)| h.id != handle.inner().id))
         .zip(available_spawn_locations.iter())
     {
-        spawn_player(
-            handle,
-            *location,
-            game_map,
-            &engine,
-            &asset_server,
-            &assets,
-            &mut commands,
-            &mut materials,
-        )
-        .ok();
+        spawn_player(handle, *location, game_map, &engine, &asset_server, &assets, &mut commands)
+            .ok();
     }
 }
 
@@ -156,7 +146,6 @@ fn spawn_player(
     asset_server: &AssetServer,
     assets: &Assets<WasmPlayerAsset>,
     commands: &mut Commands,
-    materials: &mut Assets<ColorMaterial>,
 ) -> Result<(), anyhow::Error> {
     // The Store owns all player-adjacent data internal to the wasm module
     let mut store = Store::new(engine, ());
@@ -190,8 +179,8 @@ fn spawn_player(
     commands
         .spawn()
         .insert(Player)
-        .insert(instance)
-        .insert(store)
+        .insert(OrphanComponent(instance))
+        .insert(OrphanComponent(store))
         .insert(location)
         .insert(handle.inner().clone())
         .insert(PlayerName(name.clone()))
@@ -202,7 +191,10 @@ fn spawn_player(
                 location.as_world_coordinates(game_map).extend(PLAYER_Z)
                     + Vec3::new(0.0, PLAYER_VERTICAL_OFFSET_PX, 0.0),
             ),
-            sprite: Sprite::new(Vec2::new(PLAYER_WIDTH_PX, PLAYER_HEIGHT_PX)),
+            sprite: Sprite {
+                custom_size: Some(Vec2::new(PLAYER_WIDTH_PX, PLAYER_HEIGHT_PX)),
+                ..Default::default()
+            },
             ..Default::default()
         })
         .with_children(move |p| {
@@ -245,7 +237,7 @@ fn player_positioning_system(
     game_map_query: Query<&GameMap>,
     mut player_query: Query<(&mut Transform, &TileLocation), With<Player>>,
 ) -> Result<()> {
-    let game_map = game_map_query.single()?;
+    let game_map = game_map_query.single();
     for (mut transform, location) in player_query.iter_mut() {
         transform.translation = location.as_world_coordinates(game_map).extend(PLAYER_Z)
             + Vec3::new(0.0, PLAYER_VERTICAL_OFFSET_PX, 0.0);
@@ -311,7 +303,6 @@ fn player_death_system(
         With<Player>,
     >,
     asset_server: Res<AssetServer>,
-    mut materials: ResMut<Assets<ColorMaterial>>,
     mut handles: ResMut<PlayerHandles>,
 ) {
     for KillPlayerEvent(entity) in kill_events.iter() {
@@ -328,7 +319,10 @@ fn player_death_system(
                 .insert_bundle(SpriteBundle {
                     texture: texture_handle,
                     transform: *transform,
-                    sprite: Sprite::new(Vec2::new(SKELETON_WIDTH_PX, SKELETON_HEIGHT_PX)),
+                    sprite: Sprite {
+                        custom_size: Some(Vec2::new(SKELETON_WIDTH_PX, SKELETON_HEIGHT_PX)),
+                        ..Default::default()
+                    },
                     ..Default::default()
                 })
                 .insert(Skeleton)
@@ -435,7 +429,7 @@ fn move_player(
     let objects_on_target_tile =
         object_query.iter().filter_map(|(l, o)| (*l == target_location).then(|| o)).count();
 
-    match target_tile {
+    match **target_tile {
         Tile::Floor | Tile::Hill if objects_on_target_tile == 0 => {
             info!("{} moves to {:?}", player_name, target_location);
             *player_location = target_location;
@@ -463,9 +457,10 @@ fn wasm_player_action(
     let player_surroundings: Vec<(Tile, Option<Object>, TileOffset)> = tile_query
         .iter()
         .filter_map(|(location, tile)| {
-            let object_on_tile = object_query.iter().find_map(|(l, o)| (l == location).then(|| *o));
+            let object_on_tile =
+                object_query.iter().find_map(|(l, o)| (l == location).then(|| &*o));
             ((*location - *player_location).taxicab_distance() <= PLAYER_VIEW_TAXICAB_DISTANCE)
-                .then(|| (*tile, object_on_tile, (*location - *player_location)))
+                .then(|| (**tile, object_on_tile.map(|o| **o), (*location - *player_location)))
         })
         .collect();
     wasm_act(store, instance, player_surroundings, last_result)

@@ -41,7 +41,7 @@ fn app_state_system(
     mut app_state: ResMut<State<AppState>>,
     mut commands: Commands,
 ) -> Result<()> {
-    let (timer_entity, mut timer) = timer_query.single_mut()?;
+    let (timer_entity, mut timer) = timer_query.single_mut();
     if timer.tick(time.delta()).just_finished() {
         let (next_state, next_duration) = match app_state.current() {
             AppState::InGame => (AppState::VictoryScreen, VICTORY_SCREEN_DURATION),

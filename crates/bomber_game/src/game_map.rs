@@ -9,6 +9,7 @@ use crate::{
     log_unrecoverable_error_and_panic,
     rendering::{GAME_MAP_Z, GAME_OBJECT_Z, TILE_HEIGHT_PX, TILE_WIDTH_PX},
     state::AppState,
+    OrphanComponent,
 };
 
 /// comfortable for 8 players, many starting crates, open hill in the center.
@@ -39,7 +40,7 @@ pub struct Textures {
 impl Plugin for GameMapPlugin {
     fn build(&self, app: &mut App) {
         let asset_server =
-            app.world().get_resource::<AssetServer>().expect("Failed to retrieve asset server");
+            app.world.get_resource::<AssetServer>().expect("Failed to retrieve asset server");
         let textures = Textures {
             wall: asset_server.load("graphics/Sprites/Blocks/SolidBlock.png"),
             floor: asset_server.load("graphics/Sprites/Blocks/BackgroundTile.png"),
@@ -58,21 +59,12 @@ impl Plugin for GameMapPlugin {
     }
 }
 
-fn setup(
-    mut commands: Commands,
-    textures: Res<Textures>,
-    mut materials: ResMut<Assets<ColorMaterial>>,
-) -> Result<()> {
-    GameMap::spawn_from_text(
-        &mut commands,
-        CRATE_HEAVY_CROSS_ARENA_SMALL,
-        &textures,
-        &mut materials,
-    )
+fn setup(mut commands: Commands, textures: Res<Textures>) -> Result<()> {
+    GameMap::spawn_from_text(&mut commands, CRATE_HEAVY_CROSS_ARENA_SMALL, &textures)
 }
 
 fn cleanup(game_map_query: Query<Entity, With<GameMap>>, mut commands: Commands) -> Result<()> {
-    let entity = game_map_query.single()?;
+    let entity = game_map_query.single();
     commands.entity(entity).despawn_recursive();
 
     Ok(())
@@ -81,12 +73,7 @@ fn cleanup(game_map_query: Query<Entity, With<GameMap>>, mut commands: Commands)
 impl GameMap {
     /// Initializes a game map and spawns all tiles and tile objects from
     /// its textual representation, under a common entity parent.
-    pub fn spawn_from_text(
-        commands: &mut Commands,
-        text: &str,
-        textures: &Textures,
-        materials: &mut Assets<ColorMaterial>,
-    ) -> Result<()> {
+    pub fn spawn_from_text(commands: &mut Commands, text: &str, textures: &Textures) -> Result<()> {
         let lines: Vec<&str> = text.lines().rev().collect();
         if lines.windows(2).any(|w| w[0].len() != w[1].len()) {
             return Err(anyhow!("Mismatched row sizes in the game map"));
@@ -106,7 +93,7 @@ impl GameMap {
                 for (i, j, c) in indexed_characters {
                     let location = TileLocation(i, j);
                     Self::spawn_game_elements_from_character(
-                        parent, &game_map, location, c, textures, materials,
+                        parent, &game_map, location, c, textures,
                     )
                     .expect("Failed to spawn game elements");
                 }
@@ -122,12 +109,11 @@ impl GameMap {
         location: TileLocation,
         character: char,
         textures: &Textures,
-        materials: &mut Assets<ColorMaterial>,
     ) -> Result<()> {
         let tile = tile_from_char(character);
-        Self::spawn_tile(parent, game_map, tile, location, textures, materials);
+        Self::spawn_tile(parent, game_map, tile, location, textures);
         if let Some(object) = object_from_char(character) {
-            Self::spawn_object(parent, game_map, object, location, textures, materials)?;
+            Self::spawn_object(parent, game_map, object, location, textures)?;
         }
         if let Some(spawner) = spawner_from_char(character) {
             parent.spawn().insert(spawner).insert(location);
@@ -142,19 +128,19 @@ impl GameMap {
         tile: Tile,
         location: TileLocation,
         textures: &Textures,
-        materials: &mut Assets<ColorMaterial>,
     ) {
         let texture = match tile {
             Tile::Wall => &textures.wall,
             Tile::Floor => &textures.floor,
             Tile::Hill => &textures.hill,
-        };
-        parent.spawn().insert(tile).insert(location).insert_bundle(SpriteBundle {
+        }
+        .clone();
+        parent.spawn().insert(OrphanComponent(tile)).insert(location).insert_bundle(SpriteBundle {
             texture,
             transform: Transform::from_translation(
                 location.as_world_coordinates(game_map).extend(GAME_MAP_Z),
             ),
-            sprite: Sprite::new(Vec2::splat(TILE_WIDTH_PX)),
+            sprite: Sprite { custom_size: Some(Vec2::splat(TILE_WIDTH_PX)), ..Default::default() },
             ..Default::default()
         });
     }
@@ -165,22 +151,27 @@ impl GameMap {
         object: Object,
         location: TileLocation,
         textures: &Textures,
-        materials: &mut Assets<ColorMaterial>,
     ) -> Result<()> {
         let texture = match object {
             Object::Crate => &textures.breakable,
             _ => {
                 return Err(anyhow!("{:?} can not be spawn during game map creation.", object));
             },
-        };
-        parent.spawn().insert(object).insert(location).insert_bundle(SpriteBundle {
-            texture,
-            transform: Transform::from_translation(
-                location.as_world_coordinates(game_map).extend(GAME_OBJECT_Z),
-            ),
-            sprite: Sprite::new(Vec2::splat(TILE_WIDTH_PX)),
-            ..Default::default()
-        });
+        }
+        .clone();
+        parent.spawn().insert(OrphanComponent(object)).insert(location).insert_bundle(
+            SpriteBundle {
+                texture,
+                transform: Transform::from_translation(
+                    location.as_world_coordinates(game_map).extend(GAME_OBJECT_Z),
+                ),
+                sprite: Sprite {
+                    custom_size: Some(Vec2::splat(TILE_WIDTH_PX)),
+                    ..Default::default()
+                },
+                ..Default::default()
+            },
+        );
 
         Ok(())
     }

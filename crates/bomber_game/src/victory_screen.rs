@@ -22,8 +22,7 @@ struct Fonts {
 
 impl Plugin for VictoryScreenPlugin {
     fn build(&self, app: &mut App) {
-        let asset_server =
-            app.world().get_resource::<AssetServer>().expect("Asset server not found");
+        let asset_server = app.world.get_resource::<AssetServer>().expect("Asset server not found");
 
         let fonts = Fonts { mono: asset_server.load("fonts/space_mono_400.ttf") };
         app.insert_resource(fonts);
@@ -41,10 +40,9 @@ impl Plugin for VictoryScreenPlugin {
 }
 
 fn setup(
-    player_query: Query<(&PlayerName, &Score, &Handle<ColorMaterial>)>,
+    player_query: Query<(&PlayerName, &Score, &Handle<Image>)>,
     fonts: Res<Fonts>,
     windows: Res<Windows>,
-    mut materials: ResMut<Assets<ColorMaterial>>,
     mut commands: Commands,
 ) {
     let window = windows.get_primary().unwrap();
@@ -54,8 +52,11 @@ fn setup(
         .spawn()
         .insert(VictoryScreen)
         .insert_bundle(SpriteBundle {
-            texture: Color::rgba(0.0, 0.0, 0.0, 0.95).into(),
-            sprite: Sprite::new(Vec2::new(window.width(), window.height())),
+            sprite: Sprite {
+                color: Color::rgba(0.0, 0.0, 0.0, 0.95),
+                custom_size: Some(Vec2::new(window.width(), window.height())),
+                ..Default::default()
+            },
             transform: Transform::from_translation(Vec3::new(0.0, 0.0, VICTORY_SCREEN_Z)),
             ..Default::default()
         })
@@ -67,7 +68,7 @@ fn setup(
 
 fn spawn_podium(
     parent: &mut ChildBuilder,
-    player_query: Query<(&PlayerName, &Score, &Handle<ColorMaterial>)>,
+    player_query: Query<(&PlayerName, &Score, &Handle<Image>)>,
     fonts: &Fonts,
 ) {
     // TODO(ryo): Handle a tie.
@@ -81,9 +82,12 @@ fn spawn_podium(
 
         // The player avatar doubled in size.
         parent.spawn().insert_bundle(SpriteBundle {
-            texture: material,
+            texture: material.clone(),
             transform: Transform::from_translation(Vec3::new(0.0, 0.0, VICTORY_SCREEN_ITEMS_Z)),
-            sprite: Sprite::new(Vec2::new(PLAYER_WIDTH_PX, PLAYER_HEIGHT_PX) * 2.0),
+            sprite: Sprite {
+                custom_size: Some(Vec2::new(PLAYER_WIDTH_PX, PLAYER_HEIGHT_PX) * 2.0),
+                ..Default::default()
+            },
             ..Default::default()
         });
 
@@ -113,10 +117,10 @@ fn countdown_text_system(
     timer_query: Query<&Timer, With<AppStateTimer>>,
     mut count_down_text_query: Query<&mut Text, With<CountdownText>>,
 ) -> Result<()> {
-    let timer = timer_query.single()?;
+    let timer = timer_query.single();
     let remaining = timer.duration() - timer.elapsed();
 
-    let mut count_down_text = count_down_text_query.single_mut()?;
+    let mut count_down_text = count_down_text_query.single_mut();
     count_down_text.sections[0].value = format!("{}", remaining.as_secs());
 
     Ok(())
@@ -126,7 +130,7 @@ fn cleanup(
     victory_screen_query: Query<Entity, With<VictoryScreen>>,
     mut commands: Commands,
 ) -> Result<()> {
-    let entity = victory_screen_query.single()?;
+    let entity = victory_screen_query.single();
     commands.entity(entity).despawn_recursive();
 
     Ok(())

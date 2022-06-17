@@ -1,10 +1,10 @@
-use std::ops::Deref;
+use std::ops::{Deref, DerefMut};
 
 use anyhow::Result;
 use bevy::prelude::*;
 
 use bomb::BombPlugin;
-use bomber_lib::world::Object;
+
 use game_map::GameMapPlugin;
 use player_behaviour::PlayerBehaviourPlugin;
 use player_hotswap::PlayerHotswapPlugin;
@@ -27,7 +27,19 @@ mod victory_screen;
 #[derive(Component)]
 pub struct OrphanComponent<T>(pub T);
 
-impl<T> Deref for OrphanComponent<T> {}
+impl<T> Deref for OrphanComponent<T> {
+    type Target = T;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl<T> DerefMut for OrphanComponent<T> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
 
 fn main() -> Result<()> {
     App::new()
