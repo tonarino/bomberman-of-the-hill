@@ -27,7 +27,7 @@ use crate::{
     score::Score,
     state::AppState,
     tick::Tick,
-    OrphanComponent,
+    ExternalCrateComponent,
 };
 
 pub struct PlayerBehaviourPlugin;
@@ -89,7 +89,7 @@ fn player_spawn_system(
     game_map_query: Query<&GameMap>,
     mut player_query: Query<(Entity, &mut Handle<WasmPlayerAsset>, &TileLocation), With<Player>>,
     spawner_query: Query<&TileLocation, With<PlayerSpawner>>,
-    object_query: Query<&TileLocation, With<OrphanComponent<Object>>>,
+    object_query: Query<&TileLocation, With<ExternalCrateComponent<Object>>>,
     engine: Res<wasmtime::Engine>,
     asset_server: Res<AssetServer>,
     assets: Res<Assets<WasmPlayerAsset>>,
@@ -179,8 +179,8 @@ fn spawn_player(
     commands
         .spawn()
         .insert(Player)
-        .insert(OrphanComponent(instance))
-        .insert(OrphanComponent(store))
+        .insert(ExternalCrateComponent(instance))
+        .insert(ExternalCrateComponent(store))
         .insert(location)
         .insert(handle.inner().clone())
         .insert(PlayerName(name.clone()))
@@ -253,19 +253,19 @@ fn player_action_system(
         (
             Entity,
             &mut TileLocation,
-            &mut OrphanComponent<wasmtime::Store<()>>,
-            &OrphanComponent<wasmtime::Instance>,
+            &mut ExternalCrateComponent<wasmtime::Store<()>>,
+            &ExternalCrateComponent<wasmtime::Instance>,
             &PlayerName,
         ),
         With<Player>,
     >,
     tile_query: Query<
-        (&TileLocation, &OrphanComponent<Tile>),
-        (Without<Player>, Without<OrphanComponent<Object>>),
+        (&TileLocation, &ExternalCrateComponent<Tile>),
+        (Without<Player>, Without<ExternalCrateComponent<Object>>),
     >,
     object_query: Query<
-        (&TileLocation, &OrphanComponent<Object>),
-        (Without<Player>, Without<OrphanComponent<Tile>>),
+        (&TileLocation, &ExternalCrateComponent<Object>),
+        (Without<Player>, Without<ExternalCrateComponent<Tile>>),
     >,
     mut spawn_bomb_event: EventWriter<SpawnBombEvent>,
     mut ticks: EventReader<Tick>,
@@ -373,12 +373,12 @@ fn apply_action(
     player_name: &PlayerName,
     player_entity: Entity,
     tile_query: &Query<
-        (&TileLocation, &OrphanComponent<Tile>),
-        (Without<Player>, Without<OrphanComponent<Object>>),
+        (&TileLocation, &ExternalCrateComponent<Tile>),
+        (Without<Player>, Without<ExternalCrateComponent<Object>>),
     >,
     object_query: &Query<
-        (&TileLocation, &OrphanComponent<Object>),
-        (Without<Player>, Without<OrphanComponent<Tile>>),
+        (&TileLocation, &ExternalCrateComponent<Object>),
+        (Without<Player>, Without<ExternalCrateComponent<Tile>>),
     >,
     spawn_bomb_event: &mut EventWriter<SpawnBombEvent>,
     player_location: &mut TileLocation,
@@ -407,12 +407,12 @@ fn move_player(
     player_location: &mut TileLocation,
     direction: Direction,
     tile_query: &Query<
-        (&TileLocation, &OrphanComponent<Tile>),
-        (Without<Player>, Without<OrphanComponent<Object>>),
+        (&TileLocation, &ExternalCrateComponent<Tile>),
+        (Without<Player>, Without<ExternalCrateComponent<Object>>),
     >,
     object_query: &Query<
-        (&TileLocation, &OrphanComponent<Object>),
-        (Without<Player>, Without<OrphanComponent<Tile>>),
+        (&TileLocation, &ExternalCrateComponent<Object>),
+        (Without<Player>, Without<ExternalCrateComponent<Tile>>),
     >,
 ) -> Result<()> {
     let PlayerName(player_name) = player_name;
@@ -442,12 +442,12 @@ fn wasm_player_action(
     instance: &wasmtime::Instance,
     player_location: &TileLocation,
     tile_query: &Query<
-        (&TileLocation, &OrphanComponent<Tile>),
-        (Without<Player>, Without<OrphanComponent<Object>>),
+        (&TileLocation, &ExternalCrateComponent<Tile>),
+        (Without<Player>, Without<ExternalCrateComponent<Object>>),
     >,
     object_query: &Query<
-        (&TileLocation, &OrphanComponent<Object>),
-        (Without<Player>, Without<OrphanComponent<Tile>>),
+        (&TileLocation, &ExternalCrateComponent<Object>),
+        (Without<Player>, Without<ExternalCrateComponent<Tile>>),
     >,
 ) -> Result<Action> {
     let last_result = LastTurnResult::StoodStill; // TODO close the LastTurnResult loop.
