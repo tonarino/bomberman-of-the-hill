@@ -73,13 +73,13 @@ impl Plugin for BombPlugin {
             .add_event::<SpawnBombEvent>()
             .add_system_set(
                 SystemSet::on_update(AppState::InGame)
-                    .with_system(bomb_spawn_system.system())
-                    .with_system(fuse_remaining_system.system())
-                    .with_system(bomb_explosion_system.system())
-                    .with_system(objects_on_fire_system.system())
-                    .with_system(explosion_despawn_system.system()),
+                    .with_system(bomb_spawn_system)
+                    .with_system(fuse_remaining_system)
+                    .with_system(bomb_explosion_system)
+                    .with_system(objects_on_fire_system)
+                    .with_system(explosion_despawn_system),
             )
-            .add_system_set(SystemSet::on_exit(AppState::InGame).with_system(cleanup.system()));
+            .add_system_set(SystemSet::on_exit(AppState::InGame).with_system(cleanup));
     }
 }
 

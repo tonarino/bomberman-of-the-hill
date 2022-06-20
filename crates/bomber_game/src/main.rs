@@ -52,7 +52,7 @@ fn main() -> Result<()> {
         .add_plugin(PlayerHotswapPlugin)
         .add_plugin(BombPlugin)
         .add_plugin(VictoryScreenPlugin)
-        .add_startup_system(setup.system())
+        .add_startup_system(setup)
         .run();
     Ok(())
 }

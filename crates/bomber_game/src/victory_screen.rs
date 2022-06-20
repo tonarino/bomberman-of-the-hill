@@ -26,16 +26,15 @@ impl Plugin for VictoryScreenPlugin {
 
         let fonts = Fonts { mono: asset_server.load("fonts/space_mono_400.ttf") };
         app.insert_resource(fonts);
-        app.add_system_set(
-            SystemSet::on_enter(AppState::VictoryScreen).with_system(setup.system()),
-        )
-        .add_system_set(SystemSet::on_update(AppState::VictoryScreen).with_system(
-            countdown_text_system.system().chain(log_unrecoverable_error_and_panic.system()),
-        ))
-        .add_system_set(
-            SystemSet::on_exit(AppState::VictoryScreen)
-                .with_system(cleanup.system().chain(log_unrecoverable_error_and_panic.system())),
-        );
+        app.add_system_set(SystemSet::on_enter(AppState::VictoryScreen).with_system(setup))
+            .add_system_set(
+                SystemSet::on_update(AppState::VictoryScreen)
+                    .with_system(countdown_text_system.chain(log_unrecoverable_error_and_panic)),
+            )
+            .add_system_set(
+                SystemSet::on_exit(AppState::VictoryScreen)
+                    .with_system(cleanup.chain(log_unrecoverable_error_and_panic)),
+            );
     }
 }
 
@@ -114,10 +113,10 @@ fn spawn_countdown_text(parent: &mut ChildBuilder, fonts: &Fonts) {
 }
 
 fn countdown_text_system(
-    timer_query: Query<&Timer, With<AppStateTimer>>,
+    timer_query: Query<&AppStateTimer>,
     mut count_down_text_query: Query<&mut Text, With<CountdownText>>,
 ) -> Result<()> {
-    let timer = timer_query.single();
+    let AppStateTimer(timer) = timer_query.single();
     let remaining = timer.duration() - timer.elapsed();
 
     let mut count_down_text = count_down_text_query.single_mut();

@@ -9,7 +9,7 @@ pub struct Score(pub u32);
 
 impl Plugin for ScorePlugin {
     fn build(&self, app: &mut App) {
-        app.add_system(hill_score_system.system());
+        app.add_system(hill_score_system);
     }
 }
 

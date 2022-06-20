@@ -50,12 +50,12 @@ impl Plugin for GameMapPlugin {
         app.insert_resource(textures)
             .add_system_set(
                 SystemSet::on_enter(AppState::InGame)
-                    .with_system(setup.system().chain(log_unrecoverable_error_and_panic.system())),
+                    .with_system(setup.chain(log_unrecoverable_error_and_panic)),
             )
             // Keep the game map on the victory screen as the background.
             .add_system_set(
                 SystemSet::on_exit(AppState::VictoryScreen)
-                .with_system(cleanup.system().chain(log_unrecoverable_error_and_panic.system())));
+                .with_system(cleanup.chain(log_unrecoverable_error_and_panic)));
     }
 }
 

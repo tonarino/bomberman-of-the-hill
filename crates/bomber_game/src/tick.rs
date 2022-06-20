@@ -13,7 +13,7 @@ use bevy::prelude::*;
 pub struct TickPlugin;
 
 #[derive(Component)]
-struct TickTimer;
+struct TickTimer(pub Timer);
 #[derive(Component)]
 struct TickCounter(u32);
 
@@ -29,28 +29,26 @@ pub enum Tick {
 impl Plugin for TickPlugin {
     fn build(&self, app: &mut App) {
         app.add_event::<Tick>()
-            .add_system_set(SystemSet::on_enter(AppState::InGame).with_system(setup.system()))
+            .add_system_set(SystemSet::on_enter(AppState::InGame).with_system(setup))
+            .add_system_set(SystemSet::on_update(AppState::InGame).with_system(tick_system))
             .add_system_set(
-                SystemSet::on_update(AppState::InGame).with_system(tick_system.system()),
-            )
-            .add_system_set(
-                SystemSet::on_exit(AppState::InGame).with_system(
-                    cleanup.system().chain(log_unrecoverable_error_and_panic.system()),
-                ),
+                SystemSet::on_exit(AppState::InGame)
+                    .with_system(cleanup.chain(log_unrecoverable_error_and_panic)),
             );
     }
 }
 
 fn setup(mut commands: Commands) {
-    commands.spawn().insert(Timer::new(TICK_PERIOD, true)).insert(TickTimer).insert(TickCounter(0));
+    commands.spawn().insert(TickTimer(Timer::new(TICK_PERIOD, true))).insert(TickCounter(0));
 }
 
 fn tick_system(
-    mut timer_query: Query<(&mut Timer, &mut TickCounter), With<TickTimer>>,
+    mut timer_query: Query<(&mut TickTimer, &mut TickCounter)>,
     time: Res<Time>,
     mut events: EventWriter<Tick>,
 ) {
     let (mut timer, mut tick_counter) = timer_query.single_mut();
+    let TickTimer(ref mut timer) = *timer;
     if timer.tick(time.delta()).just_finished() {
         let event = if tick_counter.0 % 2 == 0 { Tick::Player } else { Tick::World };
         events.send(event);

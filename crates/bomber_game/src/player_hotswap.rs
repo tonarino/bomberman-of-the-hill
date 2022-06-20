@@ -49,7 +49,7 @@ impl Plugin for PlayerHotswapPlugin {
         app.insert_resource(PlayerHandles(vec![]))
             .add_asset::<WasmPlayerAsset>()
             .init_asset_loader::<WasmPlayerLoader>()
-            .add_system(hotswap_system.system());
+            .add_system(hotswap_system);
     }
 }
 
