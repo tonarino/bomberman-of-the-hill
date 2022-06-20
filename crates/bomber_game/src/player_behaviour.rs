@@ -46,7 +46,7 @@ const PLAYER_VIEW_TAXICAB_DISTANCE: u32 = 5;
 
 /// Visual representation of a dead player
 #[derive(Component)]
-struct Skeleton;
+struct Skeleton(pub Timer);
 /// It's OK to use seconds rather than ticks for the skeleton as it's just a
 /// visual representation for fun.
 const SKELETON_DURATION: Duration = Duration::from_secs(3);
@@ -58,24 +58,23 @@ impl Plugin for PlayerBehaviourPlugin {
         app.insert_resource(wasmtime::Engine::default())
             .add_system_set(
                 SystemSet::on_update(AppState::InGame)
-                    .with_system(player_spawn_system.system())
+                    .with_system(player_spawn_system)
                     .with_system(
                         player_positioning_system
-                            .system()
-                            .chain(log_unrecoverable_error_and_panic.system()),
+                            .chain(log_unrecoverable_error_and_panic),
                     )
 
-                    .with_system(player_death_system.system())
-                    .with_system(player_respawn_system.system())
-                    .with_system(skeleton_cleanup_system.system().chain(log_recoverable_error.system()))
+                    .with_system(player_death_system)
+                    .with_system(player_respawn_system)
+                    .with_system(skeleton_cleanup_system.chain(log_recoverable_error))
                     .with_system(
-                        player_action_system.system().chain(log_recoverable_error.system()),
+                        player_action_system.chain(log_recoverable_error),
                     ),
             )
             // Keep the players on the victory screen as the background.
             .add_system_set(
                 SystemSet::on_exit(AppState::VictoryScreen)
-                    .with_system(cleanup.system()),
+                    .with_system(cleanup),
             );
     }
 }
@@ -325,8 +324,7 @@ fn player_death_system(
                     },
                     ..Default::default()
                 })
-                .insert(Skeleton)
-                .insert(Timer::new(SKELETON_DURATION, false));
+                .insert(Skeleton(Timer::new(SKELETON_DURATION, false)));
 
             if let Some(handle) = handles.0.iter_mut().find(|h| h.inner().id == handle.id) {
                 *handle = PlayerHandle::Respawning(handle.inner().clone(), RESPAWN_TIME);
@@ -353,9 +351,10 @@ fn player_respawn_system(mut ticks: EventReader<Tick>, mut handles: ResMut<Playe
 fn skeleton_cleanup_system(
     mut commands: Commands,
     time: Res<Time>,
-    mut skeleton_query: Query<(Entity, &mut Sprite, &mut Timer), With<Skeleton>>,
+    mut skeleton_query: Query<(Entity, &mut Sprite, &mut Skeleton)>,
 ) -> Result<()> {
-    for (entity, mut sprite, mut timer) in skeleton_query.iter_mut() {
+    for (entity, mut sprite, mut skeleton) in skeleton_query.iter_mut() {
+        let Skeleton(ref mut timer) = *skeleton;
         timer.tick(time.delta());
         // Slowly fade the skeleton
         sprite.color.set_a(timer.percent_left());
