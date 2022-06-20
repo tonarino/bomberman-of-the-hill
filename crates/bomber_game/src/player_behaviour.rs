@@ -353,15 +353,12 @@ fn player_respawn_system(mut ticks: EventReader<Tick>, mut handles: ResMut<Playe
 fn skeleton_cleanup_system(
     mut commands: Commands,
     time: Res<Time>,
-    mut materials: ResMut<Assets<ColorMaterial>>,
-    mut skeleton_query: Query<(Entity, &Handle<ColorMaterial>, &mut Timer), With<Skeleton>>,
+    mut skeleton_query: Query<(Entity, &mut Sprite, &mut Timer), With<Skeleton>>,
 ) -> Result<()> {
-    for (entity, material, mut timer) in skeleton_query.iter_mut() {
+    for (entity, mut sprite, mut timer) in skeleton_query.iter_mut() {
         timer.tick(time.delta());
         // Slowly fade the skeleton
-        let material =
-            materials.get_mut(material).ok_or_else(|| anyhow!("Skeleton material not found"))?;
-        material.color.set_a(timer.percent_left());
+        sprite.color.set_a(timer.percent_left());
         if timer.just_finished() {
             commands.entity(entity).despawn_recursive();
         }
