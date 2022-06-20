@@ -20,10 +20,11 @@ pub enum AppState {
 const GAME_DURATION: Duration = Duration::from_secs(5 * 60);
 const VICTORY_SCREEN_DURATION: Duration = Duration::from_secs(30);
 
+#[derive(Component)]
 pub struct AppStateTimer;
 
 impl Plugin for AppStatePlugin {
-    fn build(&self, app: &mut AppBuilder) {
+    fn build(&self, app: &mut App) {
         app.add_startup_system(setup.system())
             .add_system(app_state_system.system().chain(log_unrecoverable_error_and_panic.system()))
             .add_state(AppState::InGame);
@@ -40,7 +41,7 @@ fn app_state_system(
     mut app_state: ResMut<State<AppState>>,
     mut commands: Commands,
 ) -> Result<()> {
-    let (timer_entity, mut timer) = timer_query.single_mut()?;
+    let (timer_entity, mut timer) = timer_query.single_mut();
     if timer.tick(time.delta()).just_finished() {
         let (next_state, next_duration) = match app_state.current() {
             AppState::InGame => (AppState::VictoryScreen, VICTORY_SCREEN_DURATION),

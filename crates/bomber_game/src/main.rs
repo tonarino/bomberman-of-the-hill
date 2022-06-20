@@ -1,7 +1,10 @@
+use std::ops::{Deref, DerefMut};
+
 use anyhow::Result;
 use bevy::prelude::*;
 
 use bomb::BombPlugin;
+
 use game_map::GameMapPlugin;
 use player_behaviour::PlayerBehaviourPlugin;
 use player_hotswap::PlayerHotswapPlugin;
@@ -20,8 +23,26 @@ mod state;
 mod tick;
 mod victory_screen;
 
+// Newtype wrapper to work around orphan rule (for the bevy `Component` trait)
+#[derive(Component)]
+pub struct ExternalCrateComponent<T>(pub T);
+
+impl<T> Deref for ExternalCrateComponent<T> {
+    type Target = T;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl<T> DerefMut for ExternalCrateComponent<T> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
+
 fn main() -> Result<()> {
-    App::build()
+    App::new()
         .add_plugins(DefaultPlugins)
         .add_plugin(AppStatePlugin)
         .add_plugin(GameMapPlugin)

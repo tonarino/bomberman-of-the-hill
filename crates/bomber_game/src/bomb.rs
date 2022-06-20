@@ -13,6 +13,7 @@ use crate::{
     rendering::{FLAME_Z, GAME_OBJECT_Z, TILE_WIDTH_PX},
     state::AppState,
     tick::Tick,
+    ExternalCrateComponent,
 };
 
 // A bomb explodes after this number of ticks since it's placed on the map.
@@ -34,15 +35,18 @@ pub struct SpawnBombEvent {
     pub owner: Entity,
 }
 /// Marks a bomb placed on the game map.
+#[derive(Component)]
 struct Bomb;
 /// Marks the center of an explosion with flames in each direction.
+#[derive(Component)]
 struct Explosion;
 /// Marks a flame placed on the game map.
+#[derive(Component)]
 pub struct Flame;
 
 struct Textures {
-    bomb: Handle<Texture>,
-    flame: Handle<Texture>,
+    bomb: Handle<Image>,
+    flame: Handle<Image>,
 }
 
 struct SoundEffects {
@@ -51,9 +55,9 @@ struct SoundEffects {
 }
 
 impl Plugin for BombPlugin {
-    fn build(&self, app: &mut AppBuilder) {
+    fn build(&self, app: &mut App) {
         let asset_server =
-            app.world().get_resource::<AssetServer>().expect("Failed to retrieve asset server");
+            app.world.get_resource::<AssetServer>().expect("Failed to retrieve asset server");
         let textures = Textures {
             bomb: asset_server.load("graphics/Sprites/Bomb/Bomb_f01.png"),
             flame: asset_server.load("graphics/Sprites/Flame/Flame_f01.png"),
@@ -86,15 +90,14 @@ fn bomb_spawn_system(
     textures: Res<Textures>,
     audio: Res<Audio>,
     sound_effects: Res<SoundEffects>,
-    mut materials: ResMut<Assets<ColorMaterial>>,
     mut commands: Commands,
 ) {
-    let game_map = game_map_query.single().expect("Failed to retrive game map");
+    let game_map = game_map_query.single();
 
     let mut any_bomb_spawned = false;
     for SpawnBombEvent { location, owner } in spawn_event_reader.iter() {
         if bomb_query.iter().filter(|Owner(o)| owner == o).count() < MAXIMUM_SIMULTANEOUS_BOMBS {
-            spawn_bomb(location, *owner, game_map, &textures, &mut materials, &mut commands);
+            spawn_bomb(location, *owner, game_map, &textures, &mut commands);
             any_bomb_spawned = true;
         } else {
             info!("Failed to spawn bomb: User is at maximum bomb count");
@@ -111,33 +114,32 @@ fn spawn_bomb(
     owner: Entity,
     game_map: &GameMap,
     textures: &Textures,
-    materials: &mut Assets<ColorMaterial>,
     commands: &mut Commands,
 ) {
     commands
         .spawn()
         .insert(Bomb)
         .insert(Owner(owner))
-        .insert(Object::Bomb { fuse_remaining: BOMB_FUSE_LENGTH })
+        .insert(ExternalCrateComponent(Object::Bomb { fuse_remaining: BOMB_FUSE_LENGTH }))
         .insert(*location)
         .insert_bundle(SpriteBundle {
-            material: materials.add(textures.bomb.clone().into()),
+            texture: textures.bomb.clone(),
             transform: Transform::from_translation(
                 location.as_world_coordinates(game_map).extend(GAME_OBJECT_Z),
             ),
-            sprite: Sprite::new(Vec2::splat(TILE_WIDTH_PX)),
+            sprite: Sprite { custom_size: Some(Vec2::splat(TILE_WIDTH_PX)), ..Default::default() },
             ..Default::default()
         });
 }
 
 fn fuse_remaining_system(
     mut ticks: EventReader<Tick>,
-    mut bomb_query: Query<(Entity, &TileLocation, &mut Object), With<Bomb>>,
+    mut bomb_query: Query<(Entity, &TileLocation, &mut ExternalCrateComponent<Object>), With<Bomb>>,
     mut explode_events: EventWriter<BombExplodeEvent>,
 ) {
     for _ in ticks.iter().filter(|t| matches!(t, Tick::World)) {
         for (bomb, &location, mut object) in bomb_query.iter_mut() {
-            let should_explode = match *object {
+            let should_explode = match **object {
                 Object::Bomb { ref mut fuse_remaining } => {
                     fuse_remaining.0 = fuse_remaining.0.saturating_sub(1);
                     fuse_remaining.0 == 0
@@ -155,18 +157,20 @@ fn fuse_remaining_system(
 #[allow(clippy::too_many_arguments)]
 fn bomb_explosion_system(
     mut exploded_bombs: EventReader<BombExplodeEvent>,
-    tile_query: Query<(&TileLocation, &Tile)>,
-    object_query: Query<(&TileLocation, &Object), (Without<Bomb>, Without<Player>)>,
+    tile_query: Query<(&TileLocation, &ExternalCrateComponent<Tile>)>,
+    object_query: Query<
+        (&TileLocation, &ExternalCrateComponent<Object>),
+        (Without<Bomb>, Without<Player>),
+    >,
     player_query: Query<(&TileLocation, Entity), With<Player>>,
     mut kill_events: EventWriter<KillPlayerEvent>,
     game_map_query: Query<&GameMap>,
     textures: Res<Textures>,
     audio: Res<Audio>,
     sound_effects: Res<SoundEffects>,
-    mut materials: ResMut<Assets<ColorMaterial>>,
     mut commands: Commands,
 ) {
-    let game_map = game_map_query.single().expect("Failed to retrieve game map");
+    let game_map = game_map_query.single();
 
     let mut any_bomb_exploded = false;
     for BombExplodeEvent { bomb, location } in exploded_bombs.iter() {
@@ -183,7 +187,6 @@ fn bomb_explosion_system(
                     INITIAL_BOMB_POWER,
                     game_map,
                     &textures,
-                    &mut materials,
                 );
             },
         );
@@ -199,17 +202,19 @@ fn bomb_explosion_system(
 fn spawn_flames(
     parent: &mut ChildBuilder,
     bomb_location: &TileLocation,
-    tile_query: &Query<(&TileLocation, &Tile)>,
-    object_query: &Query<(&TileLocation, &Object), (Without<Bomb>, Without<Player>)>,
+    tile_query: &Query<(&TileLocation, &ExternalCrateComponent<Tile>)>,
+    object_query: &Query<
+        (&TileLocation, &ExternalCrateComponent<Object>),
+        (Without<Bomb>, Without<Player>),
+    >,
     player_query: &Query<(&TileLocation, Entity), With<Player>>,
     kill_events: &mut EventWriter<KillPlayerEvent>,
     bomb_power: u32,
     game_map: &GameMap,
     textures: &Textures,
-    materials: &mut Assets<ColorMaterial>,
 ) {
     // Spawn a flame at the bomb location.
-    spawn_flame(parent, bomb_location, game_map, textures, materials);
+    spawn_flame(parent, bomb_location, game_map, textures);
 
     // Spawn flames in each direction.
     for direction in &Direction::all() {
@@ -220,11 +225,11 @@ fn spawn_flames(
             let object =
                 object_query.iter().find_map(|(l, o)| if *l == location { Some(o) } else { None });
             // Flame can not spawn on the walls.
-            if matches!(tile, Some(Tile::Wall)) {
+            if matches!(tile, Some(ExternalCrateComponent(Tile::Wall))) {
                 break;
             }
-            spawn_flame(parent, &location, game_map, textures, materials);
-            if matches!(object, Some(Object::Crate)) {
+            spawn_flame(parent, &location, game_map, textures);
+            if matches!(object, Some(ExternalCrateComponent(Object::Crate))) {
                 // Flame does not extend beyond a crate.
                 break;
             }
@@ -243,14 +248,13 @@ fn spawn_flame(
     location: &TileLocation,
     game_map: &GameMap,
     textures: &Textures,
-    materials: &mut Assets<ColorMaterial>,
 ) {
     parent.spawn().insert(Flame).insert(*location).insert_bundle(SpriteBundle {
-        material: materials.add(textures.flame.clone().into()),
+        texture: textures.flame.clone(),
         transform: Transform::from_translation(
             location.as_world_coordinates(game_map).extend(FLAME_Z),
         ),
-        sprite: Sprite::new(Vec2::splat(TILE_WIDTH_PX)),
+        sprite: Sprite { custom_size: Some(Vec2::splat(TILE_WIDTH_PX)), ..Default::default() },
         ..Default::default()
     });
 }
@@ -258,13 +262,13 @@ fn spawn_flame(
 /// Handle objects being blasted by bomb's explosion.
 fn objects_on_fire_system(
     flame_query: Query<&TileLocation, With<Flame>>,
-    object_query: Query<(Entity, &TileLocation, &Object)>,
+    object_query: Query<(Entity, &TileLocation, &ExternalCrateComponent<Object>)>,
     mut explode_events: EventWriter<BombExplodeEvent>,
     mut commands: Commands,
 ) {
     let on_fire = |&(_, location, _): &(_, _, _)| flame_query.iter().any(|l| l == location);
     for (entity, location, object) in object_query.iter().filter(on_fire) {
-        match object {
+        match **object {
             Object::Bomb { .. } => {
                 explode_events.send(BombExplodeEvent { bomb: entity, location: *location })
             },

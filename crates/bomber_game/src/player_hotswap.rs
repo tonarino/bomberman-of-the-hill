@@ -45,7 +45,7 @@ pub struct WasmPlayerAsset {
 }
 
 impl Plugin for PlayerHotswapPlugin {
-    fn build(&self, app: &mut AppBuilder) {
+    fn build(&self, app: &mut App) {
         app.insert_resource(PlayerHandles(vec![]))
             .add_asset::<WasmPlayerAsset>()
             .init_asset_loader::<WasmPlayerLoader>()

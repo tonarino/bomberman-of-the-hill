@@ -27,19 +27,25 @@ use crate::{
     score::Score,
     state::AppState,
     tick::Tick,
+    ExternalCrateComponent,
 };
 
 pub struct PlayerBehaviourPlugin;
+
+#[derive(Component)]
 pub struct PlayerName(pub String);
 /// Marks a player
+#[derive(Component)]
 pub struct Player;
 /// Used to mark objects owned by a player entity, such as placed bombs
+#[derive(Component)]
 pub struct Owner(pub Entity);
 
 /// How far player characters can see their surroundings
 const PLAYER_VIEW_TAXICAB_DISTANCE: u32 = 5;
 
 /// Visual representation of a dead player
+#[derive(Component)]
 struct Skeleton;
 /// It's OK to use seconds rather than ticks for the skeleton as it's just a
 /// visual representation for fun.
@@ -48,7 +54,7 @@ const SKELETON_DURATION: Duration = Duration::from_secs(3);
 const RESPAWN_TIME: Ticks = Ticks(3);
 
 impl Plugin for PlayerBehaviourPlugin {
-    fn build(&self, app: &mut AppBuilder) {
+    fn build(&self, app: &mut App) {
         app.insert_resource(wasmtime::Engine::default())
             .add_system_set(
                 SystemSet::on_update(AppState::InGame)
@@ -83,13 +89,12 @@ fn player_spawn_system(
     game_map_query: Query<&GameMap>,
     mut player_query: Query<(Entity, &mut Handle<WasmPlayerAsset>, &TileLocation), With<Player>>,
     spawner_query: Query<&TileLocation, With<PlayerSpawner>>,
-    object_query: Query<&TileLocation, With<Object>>,
+    object_query: Query<&TileLocation, With<ExternalCrateComponent<Object>>>,
     engine: Res<wasmtime::Engine>,
     asset_server: Res<AssetServer>,
     assets: Res<Assets<WasmPlayerAsset>>,
-    mut materials: ResMut<Assets<ColorMaterial>>,
 ) {
-    let game_map = game_map_query.single().expect("Game map not found");
+    let game_map = game_map_query.single();
     // Despawn all excess players (if the wasm file was unloaded)
     for (entity, handle, _) in player_query.iter_mut() {
         if handles.0.iter().all(|h| h.inner().id != handle.id) {
@@ -124,17 +129,8 @@ fn player_spawn_system(
         .filter(|handle| player_query.iter_mut().all(|(_, h, _)| h.id != handle.inner().id))
         .zip(available_spawn_locations.iter())
     {
-        spawn_player(
-            handle,
-            *location,
-            game_map,
-            &engine,
-            &asset_server,
-            &assets,
-            &mut commands,
-            &mut materials,
-        )
-        .ok();
+        spawn_player(handle, *location, game_map, &engine, &asset_server, &assets, &mut commands)
+            .ok();
     }
 }
 
@@ -150,7 +146,6 @@ fn spawn_player(
     asset_server: &AssetServer,
     assets: &Assets<WasmPlayerAsset>,
     commands: &mut Commands,
-    materials: &mut Assets<ColorMaterial>,
 ) -> Result<(), anyhow::Error> {
     // The Store owns all player-adjacent data internal to the wasm module
     let mut store = Store::new(engine, ());
@@ -184,19 +179,22 @@ fn spawn_player(
     commands
         .spawn()
         .insert(Player)
-        .insert(instance)
-        .insert(store)
+        .insert(ExternalCrateComponent(instance))
+        .insert(ExternalCrateComponent(store))
         .insert(location)
         .insert(handle.inner().clone())
         .insert(PlayerName(name.clone()))
         .insert(Score(0))
         .insert_bundle(SpriteBundle {
-            material: materials.add(texture_handle.into()),
+            texture: texture_handle,
             transform: Transform::from_translation(
                 location.as_world_coordinates(game_map).extend(PLAYER_Z)
                     + Vec3::new(0.0, PLAYER_VERTICAL_OFFSET_PX, 0.0),
             ),
-            sprite: Sprite::new(Vec2::new(PLAYER_WIDTH_PX, PLAYER_HEIGHT_PX)),
+            sprite: Sprite {
+                custom_size: Some(Vec2::new(PLAYER_WIDTH_PX, PLAYER_HEIGHT_PX)),
+                ..Default::default()
+            },
             ..Default::default()
         })
         .with_children(move |p| {
@@ -239,7 +237,7 @@ fn player_positioning_system(
     game_map_query: Query<&GameMap>,
     mut player_query: Query<(&mut Transform, &TileLocation), With<Player>>,
 ) -> Result<()> {
-    let game_map = game_map_query.single()?;
+    let game_map = game_map_query.single();
     for (mut transform, location) in player_query.iter_mut() {
         transform.translation = location.as_world_coordinates(game_map).extend(PLAYER_Z)
             + Vec3::new(0.0, PLAYER_VERTICAL_OFFSET_PX, 0.0);
@@ -252,11 +250,23 @@ fn player_positioning_system(
 /// complex actions.
 fn player_action_system(
     mut player_query: Query<
-        (Entity, &mut TileLocation, &mut wasmtime::Store<()>, &wasmtime::Instance, &PlayerName),
+        (
+            Entity,
+            &mut TileLocation,
+            &mut ExternalCrateComponent<wasmtime::Store<()>>,
+            &ExternalCrateComponent<wasmtime::Instance>,
+            &PlayerName,
+        ),
         With<Player>,
     >,
-    tile_query: Query<(&TileLocation, &Tile), (Without<Player>, Without<Object>)>,
-    object_query: Query<(&TileLocation, &Object), (Without<Player>, Without<Tile>)>,
+    tile_query: Query<
+        (&TileLocation, &ExternalCrateComponent<Tile>),
+        (Without<Player>, Without<ExternalCrateComponent<Object>>),
+    >,
+    object_query: Query<
+        (&TileLocation, &ExternalCrateComponent<Object>),
+        (Without<Player>, Without<ExternalCrateComponent<Tile>>),
+    >,
     mut spawn_bomb_event: EventWriter<SpawnBombEvent>,
     mut ticks: EventReader<Tick>,
 ) -> Result<()> {
@@ -293,7 +303,6 @@ fn player_death_system(
         With<Player>,
     >,
     asset_server: Res<AssetServer>,
-    mut materials: ResMut<Assets<ColorMaterial>>,
     mut handles: ResMut<PlayerHandles>,
 ) {
     for KillPlayerEvent(entity) in kill_events.iter() {
@@ -308,9 +317,12 @@ fn player_death_system(
             commands
                 .spawn()
                 .insert_bundle(SpriteBundle {
-                    material: materials.add(texture_handle.into()),
+                    texture: texture_handle,
                     transform: *transform,
-                    sprite: Sprite::new(Vec2::new(SKELETON_WIDTH_PX, SKELETON_HEIGHT_PX)),
+                    sprite: Sprite {
+                        custom_size: Some(Vec2::new(SKELETON_WIDTH_PX, SKELETON_HEIGHT_PX)),
+                        ..Default::default()
+                    },
                     ..Default::default()
                 })
                 .insert(Skeleton)
@@ -341,15 +353,12 @@ fn player_respawn_system(mut ticks: EventReader<Tick>, mut handles: ResMut<Playe
 fn skeleton_cleanup_system(
     mut commands: Commands,
     time: Res<Time>,
-    mut materials: ResMut<Assets<ColorMaterial>>,
-    mut skeleton_query: Query<(Entity, &Handle<ColorMaterial>, &mut Timer), With<Skeleton>>,
+    mut skeleton_query: Query<(Entity, &mut Sprite, &mut Timer), With<Skeleton>>,
 ) -> Result<()> {
-    for (entity, material, mut timer) in skeleton_query.iter_mut() {
+    for (entity, mut sprite, mut timer) in skeleton_query.iter_mut() {
         timer.tick(time.delta());
         // Slowly fade the skeleton
-        let material =
-            materials.get_mut(material).ok_or_else(|| anyhow!("Skeleton material not found"))?;
-        material.color.set_a(timer.percent_left());
+        sprite.color.set_a(timer.percent_left());
         if timer.just_finished() {
             commands.entity(entity).despawn_recursive();
         }
@@ -363,8 +372,14 @@ fn apply_action(
     action: Action,
     player_name: &PlayerName,
     player_entity: Entity,
-    tile_query: &Query<(&TileLocation, &Tile), (Without<Player>, Without<Object>)>,
-    object_query: &Query<(&TileLocation, &Object), (Without<Player>, Without<Tile>)>,
+    tile_query: &Query<
+        (&TileLocation, &ExternalCrateComponent<Tile>),
+        (Without<Player>, Without<ExternalCrateComponent<Object>>),
+    >,
+    object_query: &Query<
+        (&TileLocation, &ExternalCrateComponent<Object>),
+        (Without<Player>, Without<ExternalCrateComponent<Tile>>),
+    >,
     spawn_bomb_event: &mut EventWriter<SpawnBombEvent>,
     player_location: &mut TileLocation,
 ) -> Result<()> {
@@ -391,8 +406,14 @@ fn move_player(
     player_name: &PlayerName,
     player_location: &mut TileLocation,
     direction: Direction,
-    tile_query: &Query<(&TileLocation, &Tile), (Without<Player>, Without<Object>)>,
-    object_query: &Query<(&TileLocation, &Object), (Without<Player>, Without<Tile>)>,
+    tile_query: &Query<
+        (&TileLocation, &ExternalCrateComponent<Tile>),
+        (Without<Player>, Without<ExternalCrateComponent<Object>>),
+    >,
+    object_query: &Query<
+        (&TileLocation, &ExternalCrateComponent<Object>),
+        (Without<Player>, Without<ExternalCrateComponent<Tile>>),
+    >,
 ) -> Result<()> {
     let PlayerName(player_name) = player_name;
 
@@ -405,7 +426,7 @@ fn move_player(
     let objects_on_target_tile =
         object_query.iter().filter_map(|(l, o)| (*l == target_location).then(|| o)).count();
 
-    match target_tile {
+    match **target_tile {
         Tile::Floor | Tile::Hill if objects_on_target_tile == 0 => {
             info!("{} moves to {:?}", player_name, target_location);
             *player_location = target_location;
@@ -420,16 +441,23 @@ fn wasm_player_action(
     store: &mut wasmtime::Store<()>,
     instance: &wasmtime::Instance,
     player_location: &TileLocation,
-    tile_query: &Query<(&TileLocation, &Tile), (Without<Player>, Without<Object>)>,
-    object_query: &Query<(&TileLocation, &Object), (Without<Player>, Without<Tile>)>,
+    tile_query: &Query<
+        (&TileLocation, &ExternalCrateComponent<Tile>),
+        (Without<Player>, Without<ExternalCrateComponent<Object>>),
+    >,
+    object_query: &Query<
+        (&TileLocation, &ExternalCrateComponent<Object>),
+        (Without<Player>, Without<ExternalCrateComponent<Tile>>),
+    >,
 ) -> Result<Action> {
     let last_result = LastTurnResult::StoodStill; // TODO close the LastTurnResult loop.
     let player_surroundings: Vec<(Tile, Option<Object>, TileOffset)> = tile_query
         .iter()
         .filter_map(|(location, tile)| {
-            let object_on_tile = object_query.iter().find_map(|(l, o)| (l == location).then(|| *o));
+            let object_on_tile =
+                object_query.iter().find_map(|(l, o)| (l == location).then(|| &*o));
             ((*location - *player_location).taxicab_distance() <= PLAYER_VIEW_TAXICAB_DISTANCE)
-                .then(|| (*tile, object_on_tile, (*location - *player_location)))
+                .then(|| (**tile, object_on_tile.map(|o| **o), (*location - *player_location)))
         })
         .collect();
     wasm_act(store, instance, player_surroundings, last_result)

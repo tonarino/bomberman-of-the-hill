@@ -12,7 +12,9 @@ use bevy::prelude::*;
 /// a bomb the same frame it explodes).
 pub struct TickPlugin;
 
+#[derive(Component)]
 struct TickTimer;
+#[derive(Component)]
 struct TickCounter(u32);
 
 const TICK_PERIOD: Duration = Duration::from_millis(500);
@@ -25,7 +27,7 @@ pub enum Tick {
 }
 
 impl Plugin for TickPlugin {
-    fn build(&self, app: &mut AppBuilder) {
+    fn build(&self, app: &mut App) {
         app.add_event::<Tick>()
             .add_system_set(SystemSet::on_enter(AppState::InGame).with_system(setup.system()))
             .add_system_set(
@@ -48,7 +50,7 @@ fn tick_system(
     time: Res<Time>,
     mut events: EventWriter<Tick>,
 ) {
-    let (mut timer, mut tick_counter) = timer_query.single_mut().expect("Tick timer not found");
+    let (mut timer, mut tick_counter) = timer_query.single_mut();
     if timer.tick(time.delta()).just_finished() {
         let event = if tick_counter.0 % 2 == 0 { Tick::Player } else { Tick::World };
         events.send(event);
@@ -57,7 +59,7 @@ fn tick_system(
 }
 
 fn cleanup(timer_query: Query<Entity, With<TickTimer>>, mut commands: Commands) -> Result<()> {
-    let entity = timer_query.single()?;
+    let entity = timer_query.single();
     commands.entity(entity).despawn_recursive();
 
     Ok(())
