@@ -36,7 +36,11 @@ pub struct PlayerBehaviourPlugin;
 pub struct PlayerName(pub String);
 /// Marks a player
 #[derive(Component)]
-pub struct Player;
+pub struct Player {
+    // The wasm fuel is internally tracked by the store, but it can't be accessed
+    // through the `wasmtime` API, so we keep a separate count associated to the player.
+    last_turn_total_fuel_consumed: u64,
+}
 /// Used to mark objects owned by a player entity, such as placed bombs
 #[derive(Component)]
 pub struct Owner(pub Entity);
@@ -52,10 +56,15 @@ struct Skeleton(pub Timer);
 const SKELETON_DURATION: Duration = Duration::from_secs(3);
 
 const RESPAWN_TIME: Ticks = Ticks(3);
+/// Number of allowed WASM instructions per player and per tick. It should be enough to cover non-pathological usage patterns.
+/// As a reference, very very basic players like the wanderer and fool spend about 600_000 fuel per turn.
+const FUEL_PER_TICK: u64 = 100_000_000;
 
 impl Plugin for PlayerBehaviourPlugin {
     fn build(&self, app: &mut App) {
-        app.insert_resource(wasmtime::Engine::default())
+        let wasm_engine = wasmtime::Engine::new(wasmtime::Config::new().consume_fuel(true))
+            .expect("Failed to build wasm engine");
+        app.insert_resource(wasm_engine)
             .add_system_set(
                 SystemSet::on_update(AppState::InGame)
                     .with_system(player_spawn_system)
@@ -148,6 +157,7 @@ fn spawn_player(
 ) -> Result<(), anyhow::Error> {
     // The Store owns all player-adjacent data internal to the wasm module
     let mut store = Store::new(engine, ());
+    store.add_fuel(FUEL_PER_TICK)?;
     let wasm_bytes = assets
         .get(handle.inner())
         .ok_or_else(|| anyhow!("Wasm asset not found at runtime"))?
@@ -163,21 +173,21 @@ fn spawn_player(
     let name = if let Ok(name) = wasm_name(&mut store, &instance) {
         name
     } else {
-        *handle = PlayerHandle::Panicked(handle.inner().clone());
+        *handle = PlayerHandle::Misbehaved(handle.inner().clone());
         return Err(anyhow!("Wasm failed to return name, invalidating handle."));
     };
     let name = filter_name(&name);
     let team_name = if let Ok(team_name) = wasm_team_name(&mut store, &instance) {
         team_name
     } else {
-        *handle = PlayerHandle::Panicked(handle.inner().clone());
+        *handle = PlayerHandle::Misbehaved(handle.inner().clone());
         return Err(anyhow!("Wasm failed to return team name, invalidating handle."));
     };
 
     info!("{} from team {} has entered the game!", name, team_name);
     commands
         .spawn()
-        .insert(Player)
+        .insert(Player { last_turn_total_fuel_consumed: 0 })
         .insert(ExternalCrateComponent(instance))
         .insert(ExternalCrateComponent(store))
         .insert(location)
@@ -248,16 +258,15 @@ fn player_positioning_system(
 /// it. At the moment this only results in movement but will likely expand into more
 /// complex actions.
 fn player_action_system(
-    mut player_query: Query<
-        (
-            Entity,
-            &mut TileLocation,
-            &mut ExternalCrateComponent<wasmtime::Store<()>>,
-            &ExternalCrateComponent<wasmtime::Instance>,
-            &PlayerName,
-        ),
-        With<Player>,
-    >,
+    mut player_query: Query<(
+        Entity,
+        &mut TileLocation,
+        &mut ExternalCrateComponent<wasmtime::Store<()>>,
+        &ExternalCrateComponent<wasmtime::Instance>,
+        &PlayerName,
+        &mut Player,
+        &Handle<WasmPlayerAsset>,
+    )>,
     tile_query: Query<
         (&TileLocation, &ExternalCrateComponent<Tile>),
         (Without<Player>, Without<ExternalCrateComponent<Object>>),
@@ -268,13 +277,37 @@ fn player_action_system(
     >,
     mut spawn_bomb_event: EventWriter<SpawnBombEvent>,
     mut ticks: EventReader<Tick>,
+    mut handles: ResMut<PlayerHandles>,
 ) -> Result<()> {
     for _ in ticks.iter().filter(|t| matches!(t, Tick::Player)) {
-        for (player_entity, mut location, mut store, instance, player_name) in
-            player_query.iter_mut()
+        for (
+            player_entity,
+            mut location,
+            mut store,
+            instance,
+            player_name,
+            mut player,
+            handle_inner,
+        ) in player_query.iter_mut()
         {
-            let action =
-                wasm_player_action(&mut store, instance, &location, &tile_query, &object_query)?;
+            let action = match wasm_player_action(
+                &mut store,
+                instance,
+                &location,
+                &tile_query,
+                &object_query,
+            ) {
+                Ok(action) => action,
+                Err(error) => {
+                    error!("Player {} triggered an unrecoverable error ({error:?}). Invalidating handle.", player_name.0);
+                    if let Some(handle) =
+                        handles.0.iter_mut().find(|handle| handle.inner().id == handle_inner.id)
+                    {
+                        handle.invalidate();
+                    }
+                    continue;
+                },
+            };
             if let Err(e) = apply_action(
                 action,
                 player_name,
@@ -289,6 +322,15 @@ fn player_action_system(
                 // animate these).
                 info!("{}", e);
             }
+
+            let total_fuel_consumed =
+                store.fuel_consumed().expect("Fuel consumption should be enabled");
+            let fuel_consumed_this_turn = total_fuel_consumed
+                .checked_sub(player.last_turn_total_fuel_consumed)
+                .expect("Invalid fuel count");
+            player.last_turn_total_fuel_consumed = total_fuel_consumed;
+            info!("{} spent {fuel_consumed_this_turn} fuel this turn.", player_name.0);
+            store.add_fuel(fuel_consumed_this_turn)?;
         }
     }
     Ok(())
@@ -338,7 +380,7 @@ fn player_respawn_system(mut ticks: EventReader<Tick>, mut handles: ResMut<Playe
         for handle in handles.0.iter_mut() {
             match handle {
                 PlayerHandle::ReadyToSpawn(_) => (),
-                PlayerHandle::Panicked(_) => (),
+                PlayerHandle::Misbehaved(_) => (),
                 PlayerHandle::Respawning(_, Ticks(t)) if *t > 0 => *t -= 1,
                 PlayerHandle::Respawning(h, _) => {
                     *handle = PlayerHandle::ReadyToSpawn(h.clone());

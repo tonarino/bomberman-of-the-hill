@@ -12,7 +12,7 @@ pub struct PlayerHotswapPlugin;
 #[derive(Clone, Debug)]
 pub enum PlayerHandle {
     ReadyToSpawn(Handle<WasmPlayerAsset>),
-    Panicked(Handle<WasmPlayerAsset>),
+    Misbehaved(Handle<WasmPlayerAsset>),
     Respawning(Handle<WasmPlayerAsset>, Ticks),
 }
 
@@ -24,9 +24,13 @@ impl PlayerHandle {
     pub fn inner(&self) -> &Handle<WasmPlayerAsset> {
         match self {
             PlayerHandle::ReadyToSpawn(h) => h,
-            PlayerHandle::Panicked(h) => h,
+            PlayerHandle::Misbehaved(h) => h,
             PlayerHandle::Respawning(h, _) => h,
         }
+    }
+
+    pub fn invalidate(&mut self) {
+        *self = PlayerHandle::Misbehaved(self.inner().clone());
     }
 }
 
