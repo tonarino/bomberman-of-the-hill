@@ -51,9 +51,13 @@ const PLAYER_VIEW_TAXICAB_DISTANCE: u32 = 5;
 /// Visual representation of a dead player
 #[derive(Component)]
 struct Skeleton(pub Timer);
-/// It's OK to use seconds rather than ticks for the skeleton as it's just a
+/// Visual representation of a banned player
+#[derive(Component)]
+struct BanSign(pub Timer);
+/// It's OK to use seconds rather than ticks for the skeleton and ban sign as it's just a
 /// visual representation for fun.
 const SKELETON_DURATION: Duration = Duration::from_secs(3);
+const BAN_SIGN_DURATION: Duration = Duration::from_secs(3);
 
 const RESPAWN_TIME: Ticks = Ticks(3);
 /// Number of allowed WASM instructions per player and per tick. It should be enough to cover non-pathological usage patterns.
@@ -74,8 +78,10 @@ impl Plugin for PlayerBehaviourPlugin {
                     )
 
                     .with_system(player_death_system)
+                    .with_system(player_ban_system)
                     .with_system(player_respawn_system)
                     .with_system(skeleton_cleanup_system.chain(log_recoverable_error))
+                    .with_system(ban_sign_cleanup_system.chain(log_recoverable_error))
                     .with_system(
                         player_action_system.chain(log_recoverable_error),
                     ),
@@ -336,6 +342,39 @@ fn player_action_system(
     Ok(())
 }
 
+/// If a player "misbehaves" at any point after being spawned (such as by reserving too
+/// much memory or spending too much wasm fuel) they will be removed from the game with
+/// a visual to represent it, so that the team are made aware there is an issue they
+/// need to fix.
+fn player_ban_system(
+    mut commands: Commands,
+    player_query: Query<(Entity, &Transform, &PlayerName, &Handle<WasmPlayerAsset>), With<Player>>,
+    asset_server: Res<AssetServer>,
+    mut handles: ResMut<PlayerHandles>,
+) {
+    for (entity, transform, PlayerName(name), handle_inner) in player_query.iter() {
+        if let Some(PlayerHandle::Misbehaved(_)) =
+            handles.0.iter_mut().find(|h| h.inner().id == handle_inner.id)
+        {
+            info!("{name} has been forciby despawned (banned)!");
+            commands.entity(entity).despawn_recursive();
+            let texture_handle = asset_server.load("graphics/Sprites/Bomberman/Front/Cross.png");
+            commands
+                .spawn()
+                .insert_bundle(SpriteBundle {
+                    texture: texture_handle,
+                    transform: *transform,
+                    sprite: Sprite {
+                        custom_size: Some(Vec2::new(SKELETON_WIDTH_PX, SKELETON_HEIGHT_PX)),
+                        ..Default::default()
+                    },
+                    ..Default::default()
+                })
+                .insert(BanSign(Timer::new(BAN_SIGN_DURATION, false)));
+        }
+    }
+}
+
 fn player_death_system(
     mut kill_events: EventReader<KillPlayerEvent>,
     mut commands: Commands,
@@ -352,7 +391,7 @@ fn player_death_system(
         {
             // The handle will be picked up and the player will be automatically respawned with
             // fresh `wasm` state.
-            info!("{} has died!", name);
+            info!("{name} has died!");
             commands.entity(entity).despawn_recursive();
             let texture_handle = asset_server.load("graphics/Sprites/Bomberman/Front/Dead.png");
             commands
@@ -399,6 +438,24 @@ fn skeleton_cleanup_system(
         let Skeleton(ref mut timer) = *skeleton;
         timer.tick(time.delta());
         // Slowly fade the skeleton
+        sprite.color.set_a(timer.percent_left());
+        if timer.just_finished() {
+            commands.entity(entity).despawn_recursive();
+        }
+    }
+
+    Ok(())
+}
+
+fn ban_sign_cleanup_system(
+    mut commands: Commands,
+    time: Res<Time>,
+    mut ban_sign_query: Query<(Entity, &mut Sprite, &mut BanSign)>,
+) -> Result<()> {
+    for (entity, mut sprite, mut ban_sign) in ban_sign_query.iter_mut() {
+        let BanSign(ref mut timer) = *ban_sign;
+        timer.tick(time.delta());
+        // Slowly fade the ban_sign
         sprite.color.set_a(timer.percent_left());
         if timer.just_finished() {
             commands.entity(entity).despawn_recursive();

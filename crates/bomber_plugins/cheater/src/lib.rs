@@ -10,6 +10,7 @@ struct Cheater;
 
 #[wasm_export]
 impl Player for Cheater {
+    #[allow(clippy::empty_loop)]
     fn act(
         &mut self,
         _surroundings: Vec<(Tile, Option<Object>, bomber_lib::world::TileOffset)>,
