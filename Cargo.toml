@@ -7,5 +7,6 @@ members = [
    "./crates/bomber_plugins/wanderer",
    "./crates/bomber_plugins/fool",
    "./crates/bomber_plugins/cheater",
+   "./crates/bomber_plugins/memcheater",
    "./crates/upload_server",
 ]
