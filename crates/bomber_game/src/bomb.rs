@@ -9,8 +9,9 @@ use bomber_lib::world::{Direction, Object, Ticks, Tile};
 
 use crate::{
     game_map::{GameMap, TileLocation},
-    player_behaviour::{Owner, Player},
+    player_behaviour::{KillPlayerEvent, Owner, Player, PlayerName, SpawnPlayerEvent},
     rendering::{FLAME_Z, GAME_OBJECT_Z, TILE_WIDTH_PX},
+    score::Score,
     state::AppState,
     tick::Tick,
     ExternalCrateComponent,
@@ -23,7 +24,6 @@ const INITIAL_BOMB_POWER: u32 = 2;
 const MAXIMUM_SIMULTANEOUS_BOMBS: usize = 2;
 
 pub struct BombPlugin;
-pub struct KillPlayerEvent(pub Entity);
 pub struct BombExplodeEvent {
     pub bomb: Entity,
     pub location: TileLocation,
@@ -68,6 +68,7 @@ impl Plugin for BombPlugin {
         };
         app.insert_resource(textures)
             .add_event::<KillPlayerEvent>()
+            .add_event::<SpawnPlayerEvent>()
             .add_event::<BombExplodeEvent>()
             .insert_resource(sound_effects)
             .add_event::<SpawnBombEvent>()
@@ -162,7 +163,7 @@ fn bomb_explosion_system(
         (&TileLocation, &ExternalCrateComponent<Object>),
         (Without<Bomb>, Without<Player>),
     >,
-    player_query: Query<(&TileLocation, Entity), With<Player>>,
+    player_query: Query<(&TileLocation, Entity, &PlayerName, &Score), With<Player>>,
     mut kill_events: EventWriter<KillPlayerEvent>,
     game_map_query: Query<&GameMap>,
     textures: Res<Textures>,
@@ -207,7 +208,7 @@ fn spawn_flames(
         (&TileLocation, &ExternalCrateComponent<Object>),
         (Without<Bomb>, Without<Player>),
     >,
-    player_query: &Query<(&TileLocation, Entity), With<Player>>,
+    player_query: &Query<(&TileLocation, Entity, &PlayerName, &Score), With<Player>>,
     kill_events: &mut EventWriter<KillPlayerEvent>,
     bomb_power: u32,
     game_map: &GameMap,
@@ -234,10 +235,12 @@ fn spawn_flames(
                 break;
             }
 
-            if let Some(player) =
-                player_query.iter().find_map(|(l, e)| if *l == location { Some(e) } else { None })
+            if let Some((player, name, score)) =
+                player_query
+                    .iter()
+                    .find_map(|(l, e, n, s)| if *l == location { Some((e, n, s)) } else { None })
             {
-                kill_events.send(KillPlayerEvent(player));
+                kill_events.send(KillPlayerEvent(player, name.clone(), *score));
             }
         }
     }

@@ -6,7 +6,7 @@ use crate::{
     player_behaviour::PlayerName,
     rendering::{PLAYER_HEIGHT_PX, PLAYER_WIDTH_PX, VICTORY_SCREEN_ITEMS_Z, VICTORY_SCREEN_Z},
     score::Score,
-    state::{AppState, AppStateTimer},
+    state::{AppState, RoundTimer},
 };
 
 pub struct VictoryScreenPlugin;
@@ -113,10 +113,10 @@ fn spawn_countdown_text(parent: &mut ChildBuilder, fonts: &Fonts) {
 }
 
 fn countdown_text_system(
-    timer_query: Query<&AppStateTimer>,
+    timer_query: Query<&RoundTimer>,
     mut count_down_text_query: Query<&mut Text, With<CountdownText>>,
 ) -> Result<()> {
-    let AppStateTimer(timer) = timer_query.single();
+    let RoundTimer(timer) = timer_query.single();
     let remaining = timer.duration() - timer.elapsed();
 
     let mut count_down_text = count_down_text_query.single_mut();

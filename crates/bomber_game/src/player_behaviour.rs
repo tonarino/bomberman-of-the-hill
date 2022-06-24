@@ -16,7 +16,7 @@ use bomber_lib::{
 use wasmtime::Store;
 
 use crate::{
-    bomb::{KillPlayerEvent, SpawnBombEvent},
+    bomb::SpawnBombEvent,
     game_map::{GameMap, PlayerSpawner, TileLocation},
     log_recoverable_error, log_unrecoverable_error_and_panic,
     player_hotswap::{PlayerHandle, PlayerHandles, WasmPlayerAsset},
@@ -32,7 +32,7 @@ use crate::{
 
 pub struct PlayerBehaviourPlugin;
 
-#[derive(Component)]
+#[derive(Component, Clone)]
 pub struct PlayerName(pub String);
 /// Marks a player
 #[derive(Component)]
@@ -41,6 +41,9 @@ pub struct Player {
     // through the `wasmtime` API, so we keep a separate count associated to the player.
     total_fuel_consumed: u64,
 }
+pub struct KillPlayerEvent(pub Entity, pub PlayerName, pub Score);
+pub struct SpawnPlayerEvent(pub PlayerName);
+
 /// Used to mark objects owned by a player entity, such as placed bombs
 #[derive(Component)]
 pub struct Owner(pub Entity);
@@ -106,6 +109,7 @@ fn player_spawn_system(
     object_query: Query<&TileLocation, With<ExternalCrateComponent<Object>>>,
     engine: Res<wasmtime::Engine>,
     asset_server: Res<AssetServer>,
+    mut spawn_event: EventWriter<SpawnPlayerEvent>,
     assets: Res<Assets<WasmPlayerAsset>>,
 ) {
     let game_map = game_map_query.single();
@@ -143,8 +147,17 @@ fn player_spawn_system(
         .filter(|handle| player_query.iter_mut().all(|(_, h, _)| h.id != handle.inner().id))
         .zip(available_spawn_locations.iter())
     {
-        spawn_player(handle, *location, game_map, &engine, &asset_server, &assets, &mut commands)
-            .ok();
+        spawn_player(
+            handle,
+            *location,
+            game_map,
+            &engine,
+            &asset_server,
+            &mut spawn_event,
+            &assets,
+            &mut commands,
+        )
+        .ok();
     }
 }
 
@@ -158,6 +171,7 @@ fn spawn_player(
     game_map: &GameMap,
     engine: &wasmtime::Engine,
     asset_server: &AssetServer,
+    spawn_event: &mut EventWriter<SpawnPlayerEvent>,
     assets: &Assets<WasmPlayerAsset>,
     commands: &mut Commands,
 ) -> Result<(), anyhow::Error> {
@@ -191,6 +205,7 @@ fn spawn_player(
     };
 
     info!("{} from team {} has entered the game!", name, team_name);
+    spawn_event.send(SpawnPlayerEvent(PlayerName(name.clone())));
     commands
         .spawn()
         .insert(Player { total_fuel_consumed: 0 })
@@ -378,17 +393,12 @@ fn player_ban_system(
 fn player_death_system(
     mut kill_events: EventReader<KillPlayerEvent>,
     mut commands: Commands,
-    mut player_query: Query<
-        (Entity, &Transform, &PlayerName, &Handle<WasmPlayerAsset>),
-        With<Player>,
-    >,
+    mut player_query: Query<(Entity, &Transform, &Handle<WasmPlayerAsset>), With<Player>>,
     asset_server: Res<AssetServer>,
     mut handles: ResMut<PlayerHandles>,
 ) {
-    for KillPlayerEvent(entity) in kill_events.iter() {
-        for (entity, transform, PlayerName(name), handle) in
-            player_query.iter_mut().filter(|(e, ..)| e == entity)
-        {
+    for KillPlayerEvent(entity, PlayerName(name), _) in kill_events.iter() {
+        for (entity, transform, handle) in player_query.iter_mut().filter(|(e, ..)| e == entity) {
             // The handle will be picked up and the player will be automatically respawned with
             // fresh `wasm` state.
             info!("{name} has died!");
