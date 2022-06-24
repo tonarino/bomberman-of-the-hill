@@ -39,7 +39,7 @@ pub struct PlayerName(pub String);
 pub struct Player {
     // The wasm fuel is internally tracked by the store, but it can't be accessed
     // through the `wasmtime` API, so we keep a separate count associated to the player.
-    last_turn_total_fuel_consumed: u64,
+    total_fuel_consumed: u64,
 }
 /// Used to mark objects owned by a player entity, such as placed bombs
 #[derive(Component)]
@@ -193,7 +193,7 @@ fn spawn_player(
     info!("{} from team {} has entered the game!", name, team_name);
     commands
         .spawn()
-        .insert(Player { last_turn_total_fuel_consumed: 0 })
+        .insert(Player { total_fuel_consumed: 0 })
         .insert(ExternalCrateComponent(instance))
         .insert(ExternalCrateComponent(store))
         .insert(location)
@@ -332,9 +332,9 @@ fn player_action_system(
             let total_fuel_consumed =
                 store.fuel_consumed().expect("Fuel consumption should be enabled");
             let fuel_consumed_this_turn = total_fuel_consumed
-                .checked_sub(player.last_turn_total_fuel_consumed)
+                .checked_sub(player.total_fuel_consumed)
                 .expect("Invalid fuel count");
-            player.last_turn_total_fuel_consumed = total_fuel_consumed;
+            player.total_fuel_consumed = total_fuel_consumed;
             info!("{} spent {fuel_consumed_this_turn} fuel this turn.", player_name.0);
             store.add_fuel(fuel_consumed_this_turn)?;
         }
