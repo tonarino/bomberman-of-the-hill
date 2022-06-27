@@ -6,7 +6,7 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-wasmtime = "0.30"
+wasmtime = "0.38"
 # TODO(bschwind) - Remove the 'dynamic' feature flag before deployment of the final version.
 bevy = { version = "0.7", features = ["dynamic"] }
 anyhow = "1"

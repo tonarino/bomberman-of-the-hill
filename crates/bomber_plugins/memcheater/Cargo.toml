@@ -1,0 +1,19 @@
+[package]
+name = "memcheater"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+strum = "0.21"
+lazy_static = "1"
+
+[dependencies.bomber_lib]
+path = "../../bomber_lib"
+
+[dependencies.bomber_macro]
+path = "../../bomber_macro"
+
+[lib]
+crate-type = ["cdylib"]
