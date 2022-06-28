@@ -17,7 +17,8 @@ struct TickTimer(pub Timer);
 #[derive(Component)]
 struct TickCounter(u32);
 
-const TICK_PERIOD: Duration = Duration::from_millis(500);
+pub const TICK_PERIOD: Duration = Duration::from_millis(500);
+pub const WHOLE_TURN_PERIOD: Duration = Duration::from_millis(1000);
 
 pub enum Tick {
     /// Player actions happen simultaneously during player ticks.
