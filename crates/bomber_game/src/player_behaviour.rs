@@ -14,6 +14,7 @@ use bomber_lib::{
 use wasmtime::Store;
 
 use crate::{
+    animation::AnimationState,
     bomb::SpawnBombEvent,
     game_map::{GameMap, PlayerSpawner, TileLocation},
     log_recoverable_error, log_unrecoverable_error_and_panic,
@@ -108,6 +109,7 @@ fn player_spawn_system(
     asset_server: Res<AssetServer>,
     mut spawn_event: EventWriter<SpawnPlayerEvent>,
     assets: Res<Assets<WasmPlayerAsset>>,
+    mut texture_atlases: ResMut<Assets<TextureAtlas>>,
 ) {
     let game_map = game_map_query.single();
     // Despawn all excess players (if the wasm file was unloaded)
@@ -152,6 +154,7 @@ fn player_spawn_system(
             &asset_server,
             &mut spawn_event,
             &assets,
+            &mut texture_atlases,
             &mut commands,
         )
         .ok();
@@ -169,8 +172,12 @@ fn spawn_player(
     asset_server: &AssetServer,
     spawn_event: &mut EventWriter<SpawnPlayerEvent>,
     assets: &Assets<WasmPlayerAsset>,
+    texture_atlases: &mut ResMut<Assets<TextureAtlas>>,
     commands: &mut Commands,
 ) -> Result<(), anyhow::Error> {
+    let texture_handle = asset_server.load("graphics/Sprites/Bomberman/sheet.png");
+    let texture_atlas = TextureAtlas::from_grid(texture_handle, Vec2::new(21.0, 32.0), 5, 4);
+    let texture_atlas_handle = texture_atlases.add(texture_atlas);
     // The Store owns all player-adjacent data internal to the wasm module
     let mut store = Store::new(engine, ());
     store.add_fuel(FUEL_PER_TICK)?;
@@ -184,7 +191,6 @@ fn spawn_player(
     let module = wasmtime::Module::new(engine, wasm_bytes)?;
     // Here the module is bound to a store.
     let instance = wasmtime::Instance::new(&mut store, &module, &[])?;
-    let texture_handle = asset_server.load("graphics/Sprites/Bomberman/Front/Bman_F_f00.png");
 
     let name = if let Ok(name) = wasm_name(&mut store, &instance) {
         name
@@ -211,17 +217,19 @@ fn spawn_player(
         .insert(handle.inner().clone())
         .insert(PlayerName(name.clone()))
         .insert(Score(0))
-        .insert_bundle(SpriteBundle {
-            texture: texture_handle,
+        .insert(AnimationState::StandingStill)
+        .insert_bundle(SpriteSheetBundle {
+            sprite: TextureAtlasSprite {
+                index: 2,
+                custom_size: Some(Vec2::new(PLAYER_WIDTH_PX, PLAYER_HEIGHT_PX)),
+                ..Default::default()
+            },
+            texture_atlas: texture_atlas_handle,
             transform: Transform::from_translation(
                 location.as_world_coordinates(game_map).extend(PLAYER_Z)
                     + Vec3::new(0.0, PLAYER_VERTICAL_OFFSET_PX, 0.0),
             ),
-            sprite: Sprite {
-                custom_size: Some(Vec2::new(PLAYER_WIDTH_PX, PLAYER_HEIGHT_PX)),
-                ..Default::default()
-            },
-            ..Default::default()
+            ..default()
         })
         .with_children(move |p| {
             // Text needs to be a child in order to be offset from the player
@@ -285,6 +293,7 @@ fn player_action_system(
     mut player_query: Query<(
         Entity,
         &mut TileLocation,
+        &mut AnimationState,
         &mut ExternalCrateComponent<wasmtime::Store<()>>,
         &ExternalCrateComponent<wasmtime::Instance>,
         &PlayerName,
@@ -307,6 +316,7 @@ fn player_action_system(
         for (
             player_entity,
             mut location,
+            mut animation,
             mut store,
             instance,
             player_name,
@@ -340,6 +350,7 @@ fn player_action_system(
                 &object_query,
                 &mut spawn_bomb_event,
                 &mut location,
+                &mut animation,
             ) {
                 // We downgrade this error to informative as the player is allowed
                 // to attempt impossible things like walking into a wall (We can later
@@ -479,6 +490,7 @@ fn ban_sign_cleanup_system(
 }
 
 /// Applies the action chosen by a player, causing an impact on the world or itself.
+#[allow(clippy::too_many_arguments)]
 fn apply_action(
     action: Action,
     player_name: &PlayerName,
@@ -493,24 +505,27 @@ fn apply_action(
     >,
     spawn_bomb_event: &mut EventWriter<SpawnBombEvent>,
     player_location: &mut TileLocation,
+    player_animation: &mut AnimationState,
 ) -> Result<()> {
     match action {
         Action::Move(direction) => {
-            move_player(player_name, player_location, direction, tile_query, object_query)
+            *player_animation = AnimationState::Walking(direction);
+            move_player(player_name, player_location, direction, tile_query, object_query)?;
         },
-        Action::StayStill => Ok(()),
+        Action::StayStill => *player_animation = AnimationState::StandingStill,
         Action::DropBomb => {
             spawn_bomb_event
                 .send(SpawnBombEvent { location: *player_location, owner: player_entity });
-            Ok(())
+            *player_animation = AnimationState::StandingStill
         },
         Action::DropBombAndMove(direction) => {
             let bomb_location = *player_location;
+            *player_animation = AnimationState::Walking(direction);
             move_player(player_name, player_location, direction, tile_query, object_query)?;
             spawn_bomb_event.send(SpawnBombEvent { location: bomb_location, owner: player_entity });
-            Ok(())
         },
     }
+    Ok(())
 }
 
 fn move_player(
