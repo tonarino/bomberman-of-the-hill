@@ -509,7 +509,7 @@ fn apply_action(
 ) -> Result<()> {
     match action {
         Action::Move(direction) => {
-            *player_animation = AnimationState::Walking(direction);
+            *player_animation = AnimationState::Walking(direction, 0);
             move_player(player_name, player_location, direction, tile_query, object_query)?;
         },
         Action::StayStill => *player_animation = AnimationState::StandingStill,
@@ -520,7 +520,7 @@ fn apply_action(
         },
         Action::DropBombAndMove(direction) => {
             let bomb_location = *player_location;
-            *player_animation = AnimationState::Walking(direction);
+            *player_animation = AnimationState::Walking(direction, 0);
             move_player(player_name, player_location, direction, tile_query, object_query)?;
             spawn_bomb_event.send(SpawnBombEvent { location: bomb_location, owner: player_entity });
         },
