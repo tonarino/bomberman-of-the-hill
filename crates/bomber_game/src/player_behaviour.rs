@@ -5,6 +5,7 @@ use std::time::Duration;
 
 use anyhow::{anyhow, Result};
 use bevy::prelude::*;
+use bevy_easings::*;
 use bomber_lib::{
     wasm_act, wasm_name, wasm_team_name,
     world::{Direction, Object, Ticks, Tile, TileOffset},
@@ -23,7 +24,7 @@ use crate::{
     },
     score::Score,
     state::AppState,
-    tick::Tick,
+    tick::{Tick, WHOLE_TURN_PERIOD},
     ExternalCrateComponent,
 };
 
@@ -260,12 +261,19 @@ fn spawn_player_text(parent: &mut ChildBuilder, asset_server: &AssetServer, name
 /// in the game world.
 fn player_positioning_system(
     game_map_query: Query<&GameMap>,
-    mut player_query: Query<(&mut Transform, &TileLocation), With<Player>>,
+    player_query: Query<(Entity, &Transform, &TileLocation), (With<Player>, Changed<TileLocation>)>,
+    mut commands: Commands,
 ) -> Result<()> {
     let game_map = game_map_query.single();
-    for (mut transform, location) in player_query.iter_mut() {
-        transform.translation = location.as_world_coordinates(game_map).extend(PLAYER_Z)
+    for (entity, transform, location) in player_query.iter() {
+        let mut target = *transform;
+        target.translation = location.as_world_coordinates(game_map).extend(PLAYER_Z)
             + Vec3::new(0.0, PLAYER_VERTICAL_OFFSET_PX, 0.0);
+        commands.entity(entity).insert(transform.ease_to(
+            target,
+            EaseMethod::Linear,
+            EasingType::Once { duration: WHOLE_TURN_PERIOD },
+        ));
     }
     Ok(())
 }

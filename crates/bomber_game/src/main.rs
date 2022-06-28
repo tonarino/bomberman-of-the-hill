@@ -2,6 +2,7 @@ use std::ops::{Deref, DerefMut};
 
 use anyhow::Result;
 use bevy::prelude::*;
+use bevy_easings::EasingsPlugin;
 
 use bomb::BombPlugin;
 
@@ -55,6 +56,7 @@ fn main() -> Result<()> {
         .add_plugin(BombPlugin)
         .add_plugin(VictoryScreenPlugin)
         .add_plugin(GameUiPlugin)
+        .add_plugin(EasingsPlugin)
         .add_startup_system(setup)
         .run();
     Ok(())
