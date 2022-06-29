@@ -1,9 +1,5 @@
 //! Defines a Bevy plugin that governs spawning, exploding and despawning of the bombs and flames.
 
-// Disabling lint for the module because of the ubiquitous Bevy queries.
-#![allow(clippy::type_complexity)]
-#![allow(clippy::too_many_arguments)]
-
 use bevy::prelude::*;
 use bomber_lib::world::{Direction, Object, Ticks, Tile};
 
@@ -154,7 +150,6 @@ fn fuse_remaining_system(
     }
 }
 
-#[allow(clippy::too_many_arguments)]
 fn bomb_explosion_system(
     mut exploded_bombs: EventReader<BombExplodeEvent>,
     tile_query: Query<(&TileLocation, &ExternalCrateComponent<Tile>)>,
@@ -198,7 +193,6 @@ fn bomb_explosion_system(
     }
 }
 
-#[allow(clippy::too_many_arguments)]
 fn spawn_flames(
     parent: &mut ChildBuilder,
     bomb_location: &TileLocation,
