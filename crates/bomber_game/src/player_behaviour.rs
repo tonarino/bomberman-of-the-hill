@@ -45,6 +45,11 @@ pub struct Player {
 }
 pub struct KillPlayerEvent(pub Entity, pub PlayerName, pub Score);
 pub struct SpawnPlayerEvent(pub PlayerName);
+pub struct PlayerMovedEvent {
+    pub entity: Entity,
+    pub from: TileLocation,
+    pub to: TileLocation,
+}
 
 /// Used to mark objects owned by a player entity, such as placed bombs
 #[derive(Component)]
@@ -74,6 +79,8 @@ impl Plugin for PlayerBehaviourPlugin {
         let wasm_engine = wasmtime::Engine::new(wasmtime::Config::new().consume_fuel(true))
             .expect("Failed to build wasm engine");
         app.insert_resource(wasm_engine)
+            .add_event::<SpawnPlayerEvent>()
+            .add_event::<PlayerMovedEvent>()
             .add_system_set(
                 SystemSet::on_update(AppState::InGame)
                     .with_system(player_spawn_system)
@@ -274,19 +281,24 @@ fn spawn_player_text(parent: &mut ChildBuilder, asset_server: &AssetServer, name
 /// in the game world.
 fn player_positioning_system(
     game_map_query: Query<&GameMap>,
-    player_query: Query<(Entity, &Transform, &TileLocation), (With<Player>, Changed<TileLocation>)>,
+    player_query: Query<&Transform, With<Player>>,
+    mut events: EventReader<PlayerMovedEvent>,
     mut commands: Commands,
 ) -> Result<()> {
-    let game_map = game_map_query.single();
-    for (entity, transform, location) in player_query.iter() {
-        let mut target = *transform;
-        target.translation = location.as_world_coordinates(game_map).extend(PLAYER_Z)
-            + Vec3::new(0.0, PLAYER_VERTICAL_OFFSET_PX, 0.0);
-        commands.entity(entity).insert(transform.ease_to(
-            target,
-            EaseMethod::Linear,
-            EasingType::Once { duration: WHOLE_TURN_PERIOD },
-        ));
+    for PlayerMovedEvent { entity, from, to } in events.iter() {
+        let game_map = game_map_query.single();
+        if let Ok(transform) = player_query.get(*entity) {
+            let (mut origin, mut target) = (*transform, *transform);
+            origin.translation = from.as_world_coordinates(game_map).extend(PLAYER_Z)
+                + Vec3::new(0.0, PLAYER_VERTICAL_OFFSET_PX, 0.0);
+            target.translation = to.as_world_coordinates(game_map).extend(PLAYER_Z)
+                + Vec3::new(0.0, PLAYER_VERTICAL_OFFSET_PX, 0.0);
+            commands.entity(*entity).insert(origin.ease_to(
+                target,
+                EaseMethod::Linear,
+                EasingType::Once { duration: WHOLE_TURN_PERIOD },
+            ));
+        }
     }
     Ok(())
 }
@@ -316,6 +328,7 @@ fn player_action_system(
     mut spawn_bomb_event: EventWriter<SpawnBombEvent>,
     mut ticks: EventReader<Tick>,
     mut handles: ResMut<PlayerHandles>,
+    mut event_writer: EventWriter<PlayerMovedEvent>,
 ) -> Result<()> {
     for _ in ticks.iter().filter(|t| matches!(t, Tick::Player)) {
         for (
@@ -356,6 +369,7 @@ fn player_action_system(
                 &mut spawn_bomb_event,
                 &mut location,
                 &mut animation,
+                &mut event_writer,
             ) {
                 // We downgrade this error to informative as the player is allowed
                 // to attempt impossible things like walking into a wall (We can later
@@ -511,11 +525,20 @@ fn apply_action(
     spawn_bomb_event: &mut EventWriter<SpawnBombEvent>,
     player_location: &mut TileLocation,
     player_animation: &mut AnimationState,
+    event_writer: &mut EventWriter<PlayerMovedEvent>,
 ) -> Result<()> {
     match action {
         Action::Move(direction) => {
             *player_animation = AnimationState::Walking(direction, 0);
-            move_player(player_name, player_location, direction, tile_query, object_query)?;
+            move_player(
+                player_entity,
+                player_name,
+                player_location,
+                direction,
+                tile_query,
+                object_query,
+                event_writer,
+            )?;
         },
         Action::StayStill => *player_animation = AnimationState::StandingStill,
         Action::DropBomb => {
@@ -526,7 +549,15 @@ fn apply_action(
         Action::DropBombAndMove(direction) => {
             let bomb_location = *player_location;
             *player_animation = AnimationState::Walking(direction, 0);
-            move_player(player_name, player_location, direction, tile_query, object_query)?;
+            move_player(
+                player_entity,
+                player_name,
+                player_location,
+                direction,
+                tile_query,
+                object_query,
+                event_writer,
+            )?;
             spawn_bomb_event.send(SpawnBombEvent { location: bomb_location, owner: player_entity });
         },
     }
@@ -534,6 +565,7 @@ fn apply_action(
 }
 
 fn move_player(
+    player_entity: Entity,
     player_name: &PlayerName,
     player_location: &mut TileLocation,
     direction: Direction,
@@ -545,6 +577,7 @@ fn move_player(
         (&TileLocation, &ExternalCrateComponent<Object>),
         (Without<Player>, Without<ExternalCrateComponent<Tile>>),
     >,
+    event_writer: &mut EventWriter<PlayerMovedEvent>,
 ) -> Result<()> {
     let PlayerName(player_name) = player_name;
 
@@ -560,6 +593,11 @@ fn move_player(
     match **target_tile {
         Tile::Floor | Tile::Hill if objects_on_target_tile == 0 => {
             info!("{} moves to {:?}", player_name, target_location);
+            event_writer.send(PlayerMovedEvent {
+                entity: player_entity,
+                from: *player_location,
+                to: target_location,
+            });
             *player_location = target_location;
             Ok(())
         },
