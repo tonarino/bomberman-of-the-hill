@@ -10,7 +10,7 @@ wasmtime = "0.38"
 # TODO(bschwind) - Remove the 'dynamic' feature flag before deployment of the final version.
 bevy = { version = "0.7", features = ["dynamic"] }
 bevy_egui = "0.14"
-bevy_easings = "0.7"
+bevy_tweening = "0.4"
 anyhow = "1"
 rand = "0.8"
 

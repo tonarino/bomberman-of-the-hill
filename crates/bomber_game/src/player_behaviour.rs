@@ -5,7 +5,7 @@ use std::time::Duration;
 
 use anyhow::{anyhow, Result};
 use bevy::prelude::*;
-use bevy_easings::*;
+use bevy_tweening::{lens::TransformPositionLens, *};
 use bomber_lib::{
     wasm_act, wasm_name, wasm_team_name,
     world::{Direction, Object, Ticks, Tile, TileOffset},
@@ -151,7 +151,7 @@ fn player_spawn_system(
         .iter_mut()
         .filter(|handle| handle.is_ready_to_spawn())
         .filter(|handle| player_query.iter_mut().all(|(_, h, _)| h.id != handle.inner().id))
-        .zip(available_spawn_locations.iter())
+        .zip(available_spawn_locations.iter().rev())
     {
         spawn_player(
             handle,
@@ -276,24 +276,21 @@ fn spawn_player_text(parent: &mut ChildBuilder, asset_server: &AssetServer, name
 /// in the game world.
 fn player_positioning_system(
     game_map_query: Query<&GameMap>,
-    player_query: Query<&Transform, With<Player>>,
     mut events: EventReader<PlayerMovedEvent>,
     mut commands: Commands,
 ) -> Result<()> {
     for PlayerMovedEvent { entity, from, to } in events.iter() {
         let game_map = game_map_query.single();
-        if let Ok(transform) = player_query.get(*entity) {
-            let (mut origin, mut target) = (*transform, *transform);
-            origin.translation = from.as_world_coordinates(game_map).extend(PLAYER_Z)
-                + Vec3::new(0.0, PLAYER_VERTICAL_OFFSET_PX, 0.0);
-            target.translation = to.as_world_coordinates(game_map).extend(PLAYER_Z)
-                + Vec3::new(0.0, PLAYER_VERTICAL_OFFSET_PX, 0.0);
-            commands.entity(*entity).insert(origin.ease_to(
-                target,
-                EaseMethod::Linear,
-                EasingType::Once { duration: WHOLE_TURN_PERIOD },
-            ));
-        }
+        let start = from.as_world_coordinates(game_map).extend(PLAYER_Z)
+            + Vec3::new(0.0, PLAYER_VERTICAL_OFFSET_PX, 0.0);
+        let end = to.as_world_coordinates(game_map).extend(PLAYER_Z)
+            + Vec3::new(0.0, PLAYER_VERTICAL_OFFSET_PX, 0.0);
+        commands.entity(*entity).insert(Animator::new(Tween::new(
+            EaseMethod::Linear,
+            TweeningType::Once,
+            WHOLE_TURN_PERIOD,
+            TransformPositionLens { start, end },
+        )));
     }
     Ok(())
 }
@@ -325,6 +322,7 @@ fn player_action_system(
     mut handles: ResMut<PlayerHandles>,
     mut event_writer: EventWriter<PlayerMovedEvent>,
 ) -> Result<()> {
+    let locations = player_query.iter().map(|(_, l, ..)| *l).collect::<Vec<_>>();
     for _ in ticks.iter().filter(|t| matches!(t, Tick::Player)) {
         for (
             player_entity,
@@ -359,6 +357,7 @@ fn player_action_system(
                 action,
                 player_name,
                 player_entity,
+                locations.clone().into_iter(),
                 &tile_query,
                 &object_query,
                 &mut spawn_bomb_event,
@@ -509,6 +508,7 @@ fn apply_action(
     action: Action,
     player_name: &PlayerName,
     player_entity: Entity,
+    player_locations: impl Iterator<Item = TileLocation>,
     tile_query: &Query<
         (&TileLocation, &ExternalCrateComponent<Tile>),
         (Without<Player>, Without<ExternalCrateComponent<Object>>),
@@ -529,6 +529,7 @@ fn apply_action(
                 player_entity,
                 player_name,
                 player_location,
+                player_locations,
                 direction,
                 tile_query,
                 object_query,
@@ -548,6 +549,7 @@ fn apply_action(
                 player_entity,
                 player_name,
                 player_location,
+                player_locations,
                 direction,
                 tile_query,
                 object_query,
@@ -559,10 +561,12 @@ fn apply_action(
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 fn move_player(
     player_entity: Entity,
     player_name: &PlayerName,
     player_location: &mut TileLocation,
+    player_locations: impl Iterator<Item = TileLocation>,
     direction: Direction,
     tile_query: &Query<
         (&TileLocation, &ExternalCrateComponent<Tile>),
@@ -583,10 +587,11 @@ fn move_player(
         .find_map(|(l, t)| (*l == target_location).then(|| t))
         .ok_or_else(|| anyhow!("No tile at target location ({})", player_name))?;
     let objects_on_target_tile =
-        object_query.iter().filter_map(|(l, o)| (*l == target_location).then(|| o)).count();
+        object_query.iter().filter(|(l, _)| (*l == &target_location)).count();
+    let players_on_target_tile = player_locations.filter(|l| *l == target_location).count();
 
     match **target_tile {
-        Tile::Floor | Tile::Hill if objects_on_target_tile == 0 => {
+        Tile::Floor | Tile::Hill if objects_on_target_tile + players_on_target_tile == 0 => {
             info!("{} moves to {:?}", player_name, target_location);
             event_writer.send(PlayerMovedEvent {
                 entity: player_entity,
