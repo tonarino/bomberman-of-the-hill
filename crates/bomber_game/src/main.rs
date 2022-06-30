@@ -1,7 +1,9 @@
 use std::ops::{Deref, DerefMut};
 
+use animation::AnimationPlugin;
 use anyhow::Result;
 use bevy::prelude::*;
+use bevy_tweening::TweeningPlugin;
 
 use bomb::BombPlugin;
 
@@ -14,6 +16,7 @@ use state::AppStatePlugin;
 use tick::TickPlugin;
 use victory_screen::VictoryScreenPlugin;
 
+mod animation;
 mod bomb;
 mod game_map;
 mod game_ui;
@@ -55,6 +58,8 @@ fn main() -> Result<()> {
         .add_plugin(BombPlugin)
         .add_plugin(VictoryScreenPlugin)
         .add_plugin(GameUiPlugin)
+        .add_plugin(AnimationPlugin)
+        .add_plugin(TweeningPlugin)
         .add_startup_system(setup)
         .run();
     Ok(())

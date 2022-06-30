@@ -5,7 +5,7 @@ use bomber_lib::world::{Direction, Object, Ticks, Tile};
 
 use crate::{
     game_map::{GameMap, TileLocation},
-    player_behaviour::{KillPlayerEvent, Owner, Player, PlayerName, SpawnPlayerEvent},
+    player_behaviour::{KillPlayerEvent, Owner, Player, PlayerName},
     rendering::{FLAME_Z, GAME_OBJECT_Z, TILE_WIDTH_PX},
     score::Score,
     state::AppState,
@@ -64,7 +64,6 @@ impl Plugin for BombPlugin {
         };
         app.insert_resource(textures)
             .add_event::<KillPlayerEvent>()
-            .add_event::<SpawnPlayerEvent>()
             .add_event::<BombExplodeEvent>()
             .insert_resource(sound_effects)
             .add_event::<SpawnBombEvent>()

@@ -5,6 +5,7 @@ use std::time::Duration;
 
 use anyhow::{anyhow, Result};
 use bevy::prelude::*;
+use bevy_tweening::{lens::TransformPositionLens, *};
 use bomber_lib::{
     wasm_act, wasm_name, wasm_team_name,
     world::{Direction, Object, Ticks, Tile, TileOffset},
@@ -13,6 +14,7 @@ use bomber_lib::{
 use wasmtime::Store;
 
 use crate::{
+    animation::AnimationState,
     bomb::SpawnBombEvent,
     game_map::{GameMap, PlayerSpawner, TileLocation},
     log_recoverable_error, log_unrecoverable_error_and_panic,
@@ -23,7 +25,7 @@ use crate::{
     },
     score::Score,
     state::AppState,
-    tick::Tick,
+    tick::{Tick, WHOLE_TURN_PERIOD},
     ExternalCrateComponent,
 };
 
@@ -40,6 +42,11 @@ pub struct Player {
 }
 pub struct KillPlayerEvent(pub Entity, pub PlayerName, pub Score);
 pub struct SpawnPlayerEvent(pub PlayerName);
+pub struct PlayerMovedEvent {
+    pub entity: Entity,
+    pub from: TileLocation,
+    pub to: TileLocation,
+}
 
 /// Used to mark objects owned by a player entity, such as placed bombs
 #[derive(Component)]
@@ -69,6 +76,8 @@ impl Plugin for PlayerBehaviourPlugin {
         let wasm_engine = wasmtime::Engine::new(wasmtime::Config::new().consume_fuel(true))
             .expect("Failed to build wasm engine");
         app.insert_resource(wasm_engine)
+            .add_event::<SpawnPlayerEvent>()
+            .add_event::<PlayerMovedEvent>()
             .add_system_set(
                 SystemSet::on_update(AppState::InGame)
                     .with_system(player_spawn_system)
@@ -107,6 +116,7 @@ fn player_spawn_system(
     asset_server: Res<AssetServer>,
     mut spawn_event: EventWriter<SpawnPlayerEvent>,
     assets: Res<Assets<WasmPlayerAsset>>,
+    mut texture_atlases: ResMut<Assets<TextureAtlas>>,
 ) {
     let game_map = game_map_query.single();
     // Despawn all excess players (if the wasm file was unloaded)
@@ -141,7 +151,7 @@ fn player_spawn_system(
         .iter_mut()
         .filter(|handle| handle.is_ready_to_spawn())
         .filter(|handle| player_query.iter_mut().all(|(_, h, _)| h.id != handle.inner().id))
-        .zip(available_spawn_locations.iter())
+        .zip(available_spawn_locations.iter().rev())
     {
         spawn_player(
             handle,
@@ -151,6 +161,7 @@ fn player_spawn_system(
             &asset_server,
             &mut spawn_event,
             &assets,
+            &mut texture_atlases,
             &mut commands,
         )
         .ok();
@@ -168,8 +179,12 @@ fn spawn_player(
     asset_server: &AssetServer,
     spawn_event: &mut EventWriter<SpawnPlayerEvent>,
     assets: &Assets<WasmPlayerAsset>,
+    texture_atlases: &mut ResMut<Assets<TextureAtlas>>,
     commands: &mut Commands,
 ) -> Result<(), anyhow::Error> {
+    let texture_handle = asset_server.load("graphics/Sprites/Bomberman/sheet.png");
+    let texture_atlas = TextureAtlas::from_grid(texture_handle, Vec2::new(21.0, 32.0), 5, 4);
+    let texture_atlas_handle = texture_atlases.add(texture_atlas);
     // The Store owns all player-adjacent data internal to the wasm module
     let mut store = Store::new(engine, ());
     store.add_fuel(FUEL_PER_TICK)?;
@@ -183,7 +198,6 @@ fn spawn_player(
     let module = wasmtime::Module::new(engine, wasm_bytes)?;
     // Here the module is bound to a store.
     let instance = wasmtime::Instance::new(&mut store, &module, &[])?;
-    let texture_handle = asset_server.load("graphics/Sprites/Bomberman/Front/Bman_F_f00.png");
 
     let name = if let Ok(name) = wasm_name(&mut store, &instance) {
         name
@@ -210,17 +224,19 @@ fn spawn_player(
         .insert(handle.inner().clone())
         .insert(PlayerName(name.clone()))
         .insert(Score(0))
-        .insert_bundle(SpriteBundle {
-            texture: texture_handle,
+        .insert(AnimationState::StandingStill)
+        .insert_bundle(SpriteSheetBundle {
+            sprite: TextureAtlasSprite {
+                index: 2,
+                custom_size: Some(Vec2::new(PLAYER_WIDTH_PX, PLAYER_HEIGHT_PX)),
+                ..Default::default()
+            },
+            texture_atlas: texture_atlas_handle,
             transform: Transform::from_translation(
                 location.as_world_coordinates(game_map).extend(PLAYER_Z)
                     + Vec3::new(0.0, PLAYER_VERTICAL_OFFSET_PX, 0.0),
             ),
-            sprite: Sprite {
-                custom_size: Some(Vec2::new(PLAYER_WIDTH_PX, PLAYER_HEIGHT_PX)),
-                ..Default::default()
-            },
-            ..Default::default()
+            ..default()
         })
         .with_children(move |p| {
             // Text needs to be a child in order to be offset from the player
@@ -260,12 +276,21 @@ fn spawn_player_text(parent: &mut ChildBuilder, asset_server: &AssetServer, name
 /// in the game world.
 fn player_positioning_system(
     game_map_query: Query<&GameMap>,
-    mut player_query: Query<(&mut Transform, &TileLocation), With<Player>>,
+    mut events: EventReader<PlayerMovedEvent>,
+    mut commands: Commands,
 ) -> Result<()> {
-    let game_map = game_map_query.single();
-    for (mut transform, location) in player_query.iter_mut() {
-        transform.translation = location.as_world_coordinates(game_map).extend(PLAYER_Z)
+    for PlayerMovedEvent { entity, from, to } in events.iter() {
+        let game_map = game_map_query.single();
+        let start = from.as_world_coordinates(game_map).extend(PLAYER_Z)
             + Vec3::new(0.0, PLAYER_VERTICAL_OFFSET_PX, 0.0);
+        let end = to.as_world_coordinates(game_map).extend(PLAYER_Z)
+            + Vec3::new(0.0, PLAYER_VERTICAL_OFFSET_PX, 0.0);
+        commands.entity(*entity).insert(Animator::new(Tween::new(
+            EaseMethod::Linear,
+            TweeningType::Once,
+            WHOLE_TURN_PERIOD,
+            TransformPositionLens { start, end },
+        )));
     }
     Ok(())
 }
@@ -277,6 +302,7 @@ fn player_action_system(
     mut player_query: Query<(
         Entity,
         &mut TileLocation,
+        &mut AnimationState,
         &mut ExternalCrateComponent<wasmtime::Store<()>>,
         &ExternalCrateComponent<wasmtime::Instance>,
         &PlayerName,
@@ -294,11 +320,14 @@ fn player_action_system(
     mut spawn_bomb_event: EventWriter<SpawnBombEvent>,
     mut ticks: EventReader<Tick>,
     mut handles: ResMut<PlayerHandles>,
+    mut event_writer: EventWriter<PlayerMovedEvent>,
 ) -> Result<()> {
+    let locations = player_query.iter().map(|(_, l, ..)| *l).collect::<Vec<_>>();
     for _ in ticks.iter().filter(|t| matches!(t, Tick::Player)) {
         for (
             player_entity,
             mut location,
+            mut animation,
             mut store,
             instance,
             player_name,
@@ -328,10 +357,13 @@ fn player_action_system(
                 action,
                 player_name,
                 player_entity,
+                locations.clone().into_iter(),
                 &tile_query,
                 &object_query,
                 &mut spawn_bomb_event,
                 &mut location,
+                &mut animation,
+                &mut event_writer,
             ) {
                 // We downgrade this error to informative as the player is allowed
                 // to attempt impossible things like walking into a wall (We can later
@@ -471,10 +503,12 @@ fn ban_sign_cleanup_system(
 }
 
 /// Applies the action chosen by a player, causing an impact on the world or itself.
+#[allow(clippy::too_many_arguments)]
 fn apply_action(
     action: Action,
     player_name: &PlayerName,
     player_entity: Entity,
+    player_locations: impl Iterator<Item = TileLocation>,
     tile_query: &Query<
         (&TileLocation, &ExternalCrateComponent<Tile>),
         (Without<Player>, Without<ExternalCrateComponent<Object>>),
@@ -485,29 +519,54 @@ fn apply_action(
     >,
     spawn_bomb_event: &mut EventWriter<SpawnBombEvent>,
     player_location: &mut TileLocation,
+    player_animation: &mut AnimationState,
+    event_writer: &mut EventWriter<PlayerMovedEvent>,
 ) -> Result<()> {
     match action {
         Action::Move(direction) => {
-            move_player(player_name, player_location, direction, tile_query, object_query)
+            *player_animation = AnimationState::Walking(direction, 0);
+            move_player(
+                player_entity,
+                player_name,
+                player_location,
+                player_locations,
+                direction,
+                tile_query,
+                object_query,
+                event_writer,
+            )?;
         },
-        Action::StayStill => Ok(()),
+        Action::StayStill => *player_animation = AnimationState::StandingStill,
         Action::DropBomb => {
             spawn_bomb_event
                 .send(SpawnBombEvent { location: *player_location, owner: player_entity });
-            Ok(())
+            *player_animation = AnimationState::StandingStill
         },
         Action::DropBombAndMove(direction) => {
             let bomb_location = *player_location;
-            move_player(player_name, player_location, direction, tile_query, object_query)?;
+            *player_animation = AnimationState::Walking(direction, 0);
+            move_player(
+                player_entity,
+                player_name,
+                player_location,
+                player_locations,
+                direction,
+                tile_query,
+                object_query,
+                event_writer,
+            )?;
             spawn_bomb_event.send(SpawnBombEvent { location: bomb_location, owner: player_entity });
-            Ok(())
         },
     }
+    Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 fn move_player(
+    player_entity: Entity,
     player_name: &PlayerName,
     player_location: &mut TileLocation,
+    player_locations: impl Iterator<Item = TileLocation>,
     direction: Direction,
     tile_query: &Query<
         (&TileLocation, &ExternalCrateComponent<Tile>),
@@ -517,6 +576,7 @@ fn move_player(
         (&TileLocation, &ExternalCrateComponent<Object>),
         (Without<Player>, Without<ExternalCrateComponent<Tile>>),
     >,
+    event_writer: &mut EventWriter<PlayerMovedEvent>,
 ) -> Result<()> {
     let PlayerName(player_name) = player_name;
 
@@ -527,11 +587,17 @@ fn move_player(
         .find_map(|(l, t)| (*l == target_location).then(|| t))
         .ok_or_else(|| anyhow!("No tile at target location ({})", player_name))?;
     let objects_on_target_tile =
-        object_query.iter().filter_map(|(l, o)| (*l == target_location).then(|| o)).count();
+        object_query.iter().filter(|(l, _)| (*l == &target_location)).count();
+    let players_on_target_tile = player_locations.filter(|l| *l == target_location).count();
 
     match **target_tile {
-        Tile::Floor | Tile::Hill if objects_on_target_tile == 0 => {
+        Tile::Floor | Tile::Hill if objects_on_target_tile + players_on_target_tile == 0 => {
             info!("{} moves to {:?}", player_name, target_location);
+            event_writer.send(PlayerMovedEvent {
+                entity: player_entity,
+                from: *player_location,
+                to: target_location,
+            });
             *player_location = target_location;
             Ok(())
         },
