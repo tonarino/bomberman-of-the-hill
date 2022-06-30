@@ -40,6 +40,12 @@ pub struct Player {
     // through the `wasmtime` API, so we keep a separate count associated to the player.
     total_fuel_consumed: u64,
 }
+
+#[derive(Component)]
+pub struct Team {
+    name: String,
+    color: Color,
+}
 pub struct KillPlayerEvent(pub Entity, pub PlayerName, pub Score);
 pub struct SpawnPlayerEvent(pub PlayerName);
 pub struct PlayerMovedEvent {

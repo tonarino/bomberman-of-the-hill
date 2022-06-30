@@ -108,6 +108,44 @@ fn configure_visuals(mut egui_ctx: ResMut<EguiContext>) {
 
 #[allow(unused)]
 pub mod tonari_color {
+    use bevy::prelude::*;
+    fn all_bevy() -> impl Iterator<Item = Color> {
+        all().map(|c| Color::Rgba {
+            red: c[0] as f32 / 255.0,
+            green: c[1] as f32 / 255.0,
+            blue: c[2] as f32 / 255.0,
+            alpha: c[3] as f32 / 255.0,
+        })
+    }
+    fn all() -> impl Iterator<Item = Color32> {
+        [
+            BLUE_MOON,
+            GREEN_DAY,
+            THE_WHITE_STRIPES,
+            RECYCLED_AIR,
+            CHROMEO,
+            DEEP_PURPLE,
+            LOVE,
+            RED_HOT_CHILI_PEPPERS,
+            STRAWBERRY_LETTER_23,
+            DJ_MUSTARD,
+            YELLOW_SUBMARINE,
+            LITTLE_DRAGON,
+            MY_LIFE_IS_SO_BLUE,
+            PURPLE_RAIN,
+            PINK_FLOYD,
+            YOSHIMI_BATTLES_THE_PINK_ROBOTS,
+            O_SOLE_MIO,
+            MINT_CONDITION,
+            LILAC_WINE,
+            RUSTIE,
+            JAMES_BROWN,
+            ANOTHER_GREEN_WORLD,
+            MIDNIGHT,
+            PURE_SHORES,
+        ]
+        .into_iter()
+    }
     use super::egui::Color32;
     pub const BLUE_MOON: Color32 = Color32::from_rgb(50, 108, 242);
     pub const GREEN_DAY: Color32 = Color32::from_rgb(38, 201, 140);
