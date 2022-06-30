@@ -6,6 +6,7 @@ use bevy::prelude::*;
 use bomb::BombPlugin;
 
 use game_map::GameMapPlugin;
+use game_ui::GameUiPlugin;
 use player_behaviour::PlayerBehaviourPlugin;
 use player_hotswap::PlayerHotswapPlugin;
 use score::ScorePlugin;
@@ -15,6 +16,7 @@ use victory_screen::VictoryScreenPlugin;
 
 mod bomb;
 mod game_map;
+mod game_ui;
 mod player_behaviour;
 mod player_hotswap;
 mod rendering;
@@ -52,6 +54,7 @@ fn main() -> Result<()> {
         .add_plugin(PlayerHotswapPlugin)
         .add_plugin(BombPlugin)
         .add_plugin(VictoryScreenPlugin)
+        .add_plugin(GameUiPlugin)
         .add_startup_system(setup)
         .run();
     Ok(())
