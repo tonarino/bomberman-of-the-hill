@@ -15,8 +15,7 @@ else
     echo "Copy .env.example to .env to conveniently set env variables."
 fi
 
-# TODO(Matej): use release build instead? (does it make difference for WASM?)
-cargo build -p ${CRATE_NAME} --target wasm32-unknown-unknown
+cargo build --release -p ${CRATE_NAME} --target wasm32-unknown-unknown
 
 FILE="target/wasm32-unknown-unknown/debug/${CRATE_NAME}.wasm"
 echo "Submitting ${FILE} to ${UPLOAD_SERVER_ADDRESS}."
