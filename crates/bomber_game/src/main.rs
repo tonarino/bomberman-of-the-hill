@@ -30,9 +30,9 @@ mod victory_screen;
 
 // Newtype wrapper to work around orphan rule (for the bevy `Component` trait)
 #[derive(Component)]
-pub struct ExternalCrateComponent<T>(pub T);
+pub struct Ext<T>(pub T);
 
-impl<T> Deref for ExternalCrateComponent<T> {
+impl<T> Deref for Ext<T> {
     type Target = T;
 
     fn deref(&self) -> &Self::Target {
@@ -40,7 +40,7 @@ impl<T> Deref for ExternalCrateComponent<T> {
     }
 }
 
-impl<T> DerefMut for ExternalCrateComponent<T> {
+impl<T> DerefMut for Ext<T> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.0
     }

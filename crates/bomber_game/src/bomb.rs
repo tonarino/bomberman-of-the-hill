@@ -10,7 +10,7 @@ use crate::{
     score::Score,
     state::AppState,
     tick::Tick,
-    ExternalCrateComponent,
+    Ext,
 };
 
 // A bomb explodes after this number of ticks since it's placed on the map.
@@ -116,7 +116,7 @@ fn spawn_bomb(
         .spawn()
         .insert(Bomb)
         .insert(Owner(owner))
-        .insert(ExternalCrateComponent(Object::Bomb { fuse_remaining: BOMB_FUSE_LENGTH }))
+        .insert(Ext(Object::Bomb { fuse_remaining: BOMB_FUSE_LENGTH }))
         .insert(*location)
         .insert_bundle(SpriteBundle {
             texture: textures.bomb.clone(),
@@ -130,7 +130,7 @@ fn spawn_bomb(
 
 fn fuse_remaining_system(
     mut ticks: EventReader<Tick>,
-    mut bomb_query: Query<(Entity, &TileLocation, &mut ExternalCrateComponent<Object>), With<Bomb>>,
+    mut bomb_query: Query<(Entity, &TileLocation, &mut Ext<Object>), With<Bomb>>,
     mut explode_events: EventWriter<BombExplodeEvent>,
 ) {
     for _ in ticks.iter().filter(|t| matches!(t, Tick::World)) {
@@ -152,11 +152,8 @@ fn fuse_remaining_system(
 
 fn bomb_explosion_system(
     mut exploded_bombs: EventReader<BombExplodeEvent>,
-    tile_query: Query<(&TileLocation, &ExternalCrateComponent<Tile>)>,
-    object_query: Query<
-        (&TileLocation, &ExternalCrateComponent<Object>),
-        (Without<Bomb>, Without<Player>),
-    >,
+    tile_query: Query<(&TileLocation, &Ext<Tile>)>,
+    object_query: Query<(&TileLocation, &Ext<Object>), (Without<Bomb>, Without<Player>)>,
     player_query: Query<(&TileLocation, Entity, &PlayerName, &Score), With<Player>>,
     mut kill_events: EventWriter<KillPlayerEvent>,
     game_map_query: Query<&GameMap>,
@@ -196,11 +193,8 @@ fn bomb_explosion_system(
 fn spawn_flames(
     parent: &mut ChildBuilder,
     bomb_location: &TileLocation,
-    tile_query: &Query<(&TileLocation, &ExternalCrateComponent<Tile>)>,
-    object_query: &Query<
-        (&TileLocation, &ExternalCrateComponent<Object>),
-        (Without<Bomb>, Without<Player>),
-    >,
+    tile_query: &Query<(&TileLocation, &Ext<Tile>)>,
+    object_query: &Query<(&TileLocation, &Ext<Object>), (Without<Bomb>, Without<Player>)>,
     player_query: &Query<(&TileLocation, Entity, &PlayerName, &Score), With<Player>>,
     kill_events: &mut EventWriter<KillPlayerEvent>,
     bomb_power: u32,
@@ -219,11 +213,11 @@ fn spawn_flames(
             let object =
                 object_query.iter().find_map(|(l, o)| if *l == location { Some(o) } else { None });
             // Flame can not spawn on the walls.
-            if matches!(tile, Some(ExternalCrateComponent(Tile::Wall))) {
+            if matches!(tile, Some(Ext(Tile::Wall))) {
                 break;
             }
             spawn_flame(parent, &location, game_map, textures);
-            if matches!(object, Some(ExternalCrateComponent(Object::Crate))) {
+            if matches!(object, Some(Ext(Object::Crate))) {
                 // Flame does not extend beyond a crate.
                 break;
             }
@@ -258,7 +252,7 @@ fn spawn_flame(
 /// Handle objects being blasted by bomb's explosion.
 fn objects_on_fire_system(
     flame_query: Query<&TileLocation, With<Flame>>,
-    object_query: Query<(Entity, &TileLocation, &ExternalCrateComponent<Object>)>,
+    object_query: Query<(Entity, &TileLocation, &Ext<Object>)>,
     mut explode_events: EventWriter<BombExplodeEvent>,
     mut commands: Commands,
 ) {

@@ -26,7 +26,7 @@ use crate::{
     score::Score,
     state::AppState,
     tick::{Tick, WHOLE_TURN_PERIOD},
-    ExternalCrateComponent,
+    Ext,
 };
 
 pub struct PlayerBehaviourPlugin;
@@ -46,6 +46,9 @@ pub struct PlayerMovedEvent {
     pub entity: Entity,
     pub from: TileLocation,
     pub to: TileLocation,
+}
+pub struct PlayerMisbehavedEvent {
+    pub entity: Entity,
 }
 
 /// Used to mark objects owned by a player entity, such as placed bombs
@@ -78,6 +81,7 @@ impl Plugin for PlayerBehaviourPlugin {
         app.insert_resource(wasm_engine)
             .add_event::<SpawnPlayerEvent>()
             .add_event::<PlayerMovedEvent>()
+            .add_event::<PlayerMisbehavedEvent>()
             .add_system_set(
                 SystemSet::on_update(AppState::InGame)
                     .with_system(player_spawn_system)
@@ -88,12 +92,14 @@ impl Plugin for PlayerBehaviourPlugin {
 
                     .with_system(player_death_system)
                     .with_system(player_ban_system)
+                    .with_system(invalidate_misbehaving_handles)
                     .with_system(player_respawn_system)
                     .with_system(skeleton_cleanup_system.chain(log_recoverable_error))
                     .with_system(ban_sign_cleanup_system.chain(log_recoverable_error))
+                    .with_system(world_tick.chain(refuel))
                     .with_system(
-                        player_action_system.chain(log_recoverable_error),
-                    ),
+                        player_tick.chain(decide_player_actions).chain(apply_player_actions).chain(log_recoverable_error)
+                    )
             )
             // Keep the players on the victory screen as the background.
             .add_system_set(
@@ -111,7 +117,7 @@ fn player_spawn_system(
     game_map_query: Query<&GameMap>,
     mut player_query: Query<(Entity, &mut Handle<WasmPlayerAsset>, &TileLocation), With<Player>>,
     spawner_query: Query<&TileLocation, With<PlayerSpawner>>,
-    object_query: Query<&TileLocation, With<ExternalCrateComponent<Object>>>,
+    object_query: Query<&TileLocation, With<Ext<Object>>>,
     engine: Res<wasmtime::Engine>,
     asset_server: Res<AssetServer>,
     mut spawn_event: EventWriter<SpawnPlayerEvent>,
@@ -218,8 +224,8 @@ fn spawn_player(
     commands
         .spawn()
         .insert(Player { total_fuel_consumed: 0 })
-        .insert(ExternalCrateComponent(instance))
-        .insert(ExternalCrateComponent(store))
+        .insert(Ext(instance))
+        .insert(Ext(store))
         .insert(location)
         .insert(handle.inner().clone())
         .insert(PlayerName(name.clone()))
@@ -295,92 +301,110 @@ fn player_positioning_system(
     Ok(())
 }
 
+/// Chainable system that passes `true` in frames that are player ticks.
+fn player_tick(mut ticks: EventReader<Tick>) -> bool {
+    ticks.iter().any(|t| matches!(t, Tick::Player))
+}
+
+/// Chainable system that passes `true` in frames that are world ticks.
+fn world_tick(mut ticks: EventReader<Tick>) -> bool {
+    ticks.iter().any(|t| matches!(t, Tick::World))
+}
+
+fn refuel(
+    In(is_world_tick): In<bool>,
+    mut player_query: Query<(&mut Player, &PlayerName, &mut Ext<wasmtime::Store<()>>)>,
+) {
+    if !is_world_tick {
+        return;
+    }
+
+    for (mut player, PlayerName(name), mut store) in player_query.iter_mut() {
+        let total_fuel_consumed =
+            store.fuel_consumed().expect("Fuel consumption should be enabled");
+        let fuel_consumed_this_turn = total_fuel_consumed
+            .checked_sub(player.total_fuel_consumed)
+            .expect("Invalid fuel count");
+        player.total_fuel_consumed = total_fuel_consumed;
+        info!("{name} spent {fuel_consumed_this_turn} fuel this turn.");
+        store.add_fuel(fuel_consumed_this_turn).unwrap();
+    }
+}
+
+fn invalidate_misbehaving_handles(
+    mut events: EventReader<PlayerMisbehavedEvent>,
+    query: Query<(&PlayerName, &Handle<WasmPlayerAsset>)>,
+    mut handles: ResMut<PlayerHandles>,
+) {
+    for PlayerMisbehavedEvent { entity } in events.iter() {
+        let (PlayerName(name), handle_inner) = query.get(*entity).unwrap();
+        if let Some(handle) =
+            handles.0.iter_mut().find(|handle| handle.inner().id == handle_inner.id)
+        {
+            error!("Player {name} misbehaved. Invalidating handle.",);
+            handle.invalidate();
+        }
+    }
+}
+
 /// Every universal tick, queries all players for their desired action and applies
 /// it. At the moment this only results in movement but will likely expand into more
 /// complex actions.
-fn player_action_system(
+fn decide_player_actions(
+    In(is_player_tick): In<bool>,
     mut player_query: Query<(
         Entity,
-        &mut TileLocation,
-        &mut AnimationState,
-        &mut ExternalCrateComponent<wasmtime::Store<()>>,
-        &ExternalCrateComponent<wasmtime::Instance>,
-        &PlayerName,
-        &mut Player,
-        &Handle<WasmPlayerAsset>,
+        &TileLocation,
+        &mut Ext<wasmtime::Store<()>>,
+        &Ext<wasmtime::Instance>,
     )>,
-    tile_query: Query<
-        (&TileLocation, &ExternalCrateComponent<Tile>),
-        (Without<Player>, Without<ExternalCrateComponent<Object>>),
-    >,
-    object_query: Query<
-        (&TileLocation, &ExternalCrateComponent<Object>),
-        (Without<Player>, Without<ExternalCrateComponent<Tile>>),
-    >,
-    mut spawn_bomb_event: EventWriter<SpawnBombEvent>,
-    mut ticks: EventReader<Tick>,
-    mut handles: ResMut<PlayerHandles>,
-    mut event_writer: EventWriter<PlayerMovedEvent>,
-) -> Result<()> {
-    let locations = player_query.iter().map(|(_, l, ..)| *l).collect::<Vec<_>>();
-    for _ in ticks.iter().filter(|t| matches!(t, Tick::Player)) {
-        for (
-            player_entity,
-            mut location,
-            mut animation,
-            mut store,
-            instance,
-            player_name,
-            mut player,
-            handle_inner,
-        ) in player_query.iter_mut()
-        {
-            let action = match wasm_player_action(
-                &mut store,
-                instance,
-                &location,
-                &tile_query,
-                &object_query,
-            ) {
-                Ok(action) => action,
+    tile_query: Query<(&TileLocation, Option<&Ext<Tile>>, Option<&Ext<Object>>)>,
+    mut misbehaved: EventWriter<PlayerMisbehavedEvent>,
+) -> Vec<(Entity, Action)> {
+    if !is_player_tick {
+        return vec![];
+    }
+    player_query
+        .iter_mut()
+        .filter_map(|(player_entity, location, mut store, instance)| {
+            match wasm_player_action(&mut store, instance, *location, &tile_query) {
+                Ok(action) => Some((player_entity, action)),
                 Err(error) => {
-                    error!("Player {} triggered an unrecoverable error ({error:?}). Invalidating handle.", player_name.0);
-                    if let Some(handle) =
-                        handles.0.iter_mut().find(|handle| handle.inner().id == handle_inner.id)
-                    {
-                        handle.invalidate();
-                    }
-                    continue;
+                    error!("{error}");
+                    misbehaved.send(PlayerMisbehavedEvent { entity: player_entity });
+                    None
                 },
-            };
-            if let Err(e) = apply_action(
-                action,
-                player_name,
-                player_entity,
-                locations.clone().into_iter(),
-                &tile_query,
-                &object_query,
-                &mut spawn_bomb_event,
-                &mut location,
-                &mut animation,
-                &mut event_writer,
-            ) {
-                // We downgrade this error to informative as the player is allowed
-                // to attempt impossible things like walking into a wall (We can later
-                // animate these).
-                info!("{}", e);
             }
+        })
+        .collect()
+}
 
-            let total_fuel_consumed =
-                store.fuel_consumed().expect("Fuel consumption should be enabled");
-            let fuel_consumed_this_turn = total_fuel_consumed
-                .checked_sub(player.total_fuel_consumed)
-                .expect("Invalid fuel count");
-            player.total_fuel_consumed = total_fuel_consumed;
-            info!("{} spent {fuel_consumed_this_turn} fuel this turn.", player_name.0);
-            store.add_fuel(fuel_consumed_this_turn)?;
+fn apply_player_actions(
+    In(actions): In<Vec<(Entity, Action)>>,
+    tile_query: Query<(&TileLocation, Option<&Ext<Tile>>, Option<&Ext<Object>>, Option<&Player>)>,
+    mut spawn_bomb_event: EventWriter<SpawnBombEvent>,
+    mut player_moved_event: EventWriter<PlayerMovedEvent>,
+    mut player_query: Query<(&PlayerName, &mut TileLocation, &mut AnimationState)>,
+) -> Result<()> {
+    for (entity, action) in actions.into_iter() {
+        let (name, mut location, mut animation) = player_query.get_mut(entity).unwrap();
+        if let Err(e) = apply_action(
+            action,
+            name,
+            entity,
+            &tile_query,
+            &mut spawn_bomb_event,
+            &mut location,
+            &mut animation,
+            &mut player_moved_event,
+        ) {
+            // We downgrade this error to informative as the player is allowed
+            // to attempt impossible things like walking into a wall (We can later
+            // animate these).
+            info!("{}", e);
         }
     }
+
     Ok(())
 }
 
@@ -508,15 +532,7 @@ fn apply_action(
     action: Action,
     player_name: &PlayerName,
     player_entity: Entity,
-    player_locations: impl Iterator<Item = TileLocation>,
-    tile_query: &Query<
-        (&TileLocation, &ExternalCrateComponent<Tile>),
-        (Without<Player>, Without<ExternalCrateComponent<Object>>),
-    >,
-    object_query: &Query<
-        (&TileLocation, &ExternalCrateComponent<Object>),
-        (Without<Player>, Without<ExternalCrateComponent<Tile>>),
-    >,
+    tile_query: &Query<(&TileLocation, Option<&Ext<Tile>>, Option<&Ext<Object>>, Option<&Player>)>,
     spawn_bomb_event: &mut EventWriter<SpawnBombEvent>,
     player_location: &mut TileLocation,
     player_animation: &mut AnimationState,
@@ -529,10 +545,8 @@ fn apply_action(
                 player_entity,
                 player_name,
                 player_location,
-                player_locations,
                 direction,
                 tile_query,
-                object_query,
                 event_writer,
             )?;
         },
@@ -549,10 +563,8 @@ fn apply_action(
                 player_entity,
                 player_name,
                 player_location,
-                player_locations,
                 direction,
                 tile_query,
-                object_query,
                 event_writer,
             )?;
             spawn_bomb_event.send(SpawnBombEvent { location: bomb_location, owner: player_entity });
@@ -566,16 +578,8 @@ fn move_player(
     player_entity: Entity,
     player_name: &PlayerName,
     player_location: &mut TileLocation,
-    player_locations: impl Iterator<Item = TileLocation>,
     direction: Direction,
-    tile_query: &Query<
-        (&TileLocation, &ExternalCrateComponent<Tile>),
-        (Without<Player>, Without<ExternalCrateComponent<Object>>),
-    >,
-    object_query: &Query<
-        (&TileLocation, &ExternalCrateComponent<Object>),
-        (Without<Player>, Without<ExternalCrateComponent<Tile>>),
-    >,
+    tile_query: &Query<(&TileLocation, Option<&Ext<Tile>>, Option<&Ext<Object>>, Option<&Player>)>,
     event_writer: &mut EventWriter<PlayerMovedEvent>,
 ) -> Result<()> {
     let PlayerName(player_name) = player_name;
@@ -584,15 +588,13 @@ fn move_player(
         .ok_or_else(|| anyhow!("Invalid target location ({})", player_name))?;
     let target_tile = tile_query
         .iter()
-        .find_map(|(l, t)| (*l == target_location).then(|| t))
+        .find_map(|(l, t, _, _)| (*l == target_location && t.is_some()).then(|| t.unwrap()))
         .ok_or_else(|| anyhow!("No tile at target location ({})", player_name))?;
-    let objects_on_target_tile =
-        object_query.iter().filter(|(l, _)| (*l == &target_location)).count();
-    let players_on_target_tile = player_locations.filter(|l| *l == target_location).count();
+    let something_on_target_tile =
+        tile_query.iter().any(|(l, _, o, p)| (*l == target_location && o.is_some() || p.is_some()));
 
     match **target_tile {
-        Tile::Floor | Tile::Hill if objects_on_target_tile + players_on_target_tile == 0 => {
-            info!("{} moves to {:?}", player_name, target_location);
+        Tile::Floor | Tile::Hill if !something_on_target_tile => {
             event_writer.send(PlayerMovedEvent {
                 entity: player_entity,
                 from: *player_location,
@@ -609,24 +611,17 @@ fn move_player(
 fn wasm_player_action(
     store: &mut wasmtime::Store<()>,
     instance: &wasmtime::Instance,
-    player_location: &TileLocation,
-    tile_query: &Query<
-        (&TileLocation, &ExternalCrateComponent<Tile>),
-        (Without<Player>, Without<ExternalCrateComponent<Object>>),
-    >,
-    object_query: &Query<
-        (&TileLocation, &ExternalCrateComponent<Object>),
-        (Without<Player>, Without<ExternalCrateComponent<Tile>>),
-    >,
+    player_location: TileLocation,
+    tile_query: &Query<(&TileLocation, Option<&Ext<Tile>>, Option<&Ext<Object>>)>,
 ) -> Result<Action> {
     let last_result = LastTurnResult::StoodStill; // TODO close the LastTurnResult loop.
     let player_surroundings: Vec<(Tile, Option<Object>, TileOffset)> = tile_query
         .iter()
-        .filter_map(|(location, tile)| {
-            let object_on_tile =
-                object_query.iter().find_map(|(l, o)| (l == location).then(|| &*o));
-            ((*location - *player_location).taxicab_distance() <= PLAYER_VIEW_TAXICAB_DISTANCE)
-                .then(|| (**tile, object_on_tile.map(|o| **o), (*location - *player_location)))
+        .filter_map(|(location, tile, object)| {
+            tile.and_then(|tile| {
+                ((*location - player_location).taxicab_distance() <= PLAYER_VIEW_TAXICAB_DISTANCE)
+                    .then(|| (**tile, object.map(|o| **o), (*location - player_location)))
+            })
         })
         .collect();
     wasm_act(store, instance, player_surroundings, last_result)

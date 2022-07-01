@@ -9,7 +9,7 @@ use crate::{
     log_unrecoverable_error_and_panic,
     rendering::{GAME_MAP_Z, GAME_OBJECT_Z, TILE_HEIGHT_PX, TILE_WIDTH_PX},
     state::AppState,
-    ExternalCrateComponent,
+    Ext,
 };
 
 /// comfortable for 8 players, many starting crates, open hill in the center.
@@ -135,19 +135,14 @@ impl GameMap {
             Tile::Hill => &textures.hill,
         }
         .clone();
-        parent.spawn().insert(ExternalCrateComponent(tile)).insert(location).insert_bundle(
-            SpriteBundle {
-                texture,
-                transform: Transform::from_translation(
-                    location.as_world_coordinates(game_map).extend(GAME_MAP_Z),
-                ),
-                sprite: Sprite {
-                    custom_size: Some(Vec2::splat(TILE_WIDTH_PX)),
-                    ..Default::default()
-                },
-                ..Default::default()
-            },
-        );
+        parent.spawn().insert(Ext(tile)).insert(location).insert_bundle(SpriteBundle {
+            texture,
+            transform: Transform::from_translation(
+                location.as_world_coordinates(game_map).extend(GAME_MAP_Z),
+            ),
+            sprite: Sprite { custom_size: Some(Vec2::splat(TILE_WIDTH_PX)), ..Default::default() },
+            ..Default::default()
+        });
     }
 
     fn spawn_object(
@@ -164,19 +159,14 @@ impl GameMap {
             },
         }
         .clone();
-        parent.spawn().insert(ExternalCrateComponent(object)).insert(location).insert_bundle(
-            SpriteBundle {
-                texture,
-                transform: Transform::from_translation(
-                    location.as_world_coordinates(game_map).extend(GAME_OBJECT_Z),
-                ),
-                sprite: Sprite {
-                    custom_size: Some(Vec2::splat(TILE_WIDTH_PX)),
-                    ..Default::default()
-                },
-                ..Default::default()
-            },
-        );
+        parent.spawn().insert(Ext(object)).insert(location).insert_bundle(SpriteBundle {
+            texture,
+            transform: Transform::from_translation(
+                location.as_world_coordinates(game_map).extend(GAME_OBJECT_Z),
+            ),
+            sprite: Sprite { custom_size: Some(Vec2::splat(TILE_WIDTH_PX)), ..Default::default() },
+            ..Default::default()
+        });
 
         Ok(())
     }
