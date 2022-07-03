@@ -11,12 +11,14 @@ use bomber_lib::{
     world::{Direction, Object, Ticks, Tile, TileOffset},
     Action, LastTurnResult,
 };
+use rand::{prelude::SliceRandom, thread_rng};
 use wasmtime::Store;
 
 use crate::{
     animation::AnimationState,
     bomb::SpawnBombEvent,
     game_map::{GameMap, PlayerSpawner, TileLocation},
+    game_ui::tonari_color,
     log_recoverable_error, log_unrecoverable_error_and_panic,
     player_hotswap::{PlayerHandle, PlayerHandles, WasmPlayerAsset},
     rendering::{
@@ -41,7 +43,7 @@ pub struct Player {
     total_fuel_consumed: u64,
 }
 
-#[derive(Component)]
+#[derive(Component, Clone, Debug)]
 pub struct Team {
     name: String,
     color: Color,
@@ -118,6 +120,7 @@ fn player_spawn_system(
     mut player_query: Query<(Entity, &mut Handle<WasmPlayerAsset>, &TileLocation), With<Player>>,
     spawner_query: Query<&TileLocation, With<PlayerSpawner>>,
     object_query: Query<&TileLocation, With<ExternalCrateComponent<Object>>>,
+    team_query: Query<&Team>,
     engine: Res<wasmtime::Engine>,
     asset_server: Res<AssetServer>,
     mut spawn_event: EventWriter<SpawnPlayerEvent>,
@@ -151,6 +154,7 @@ fn player_spawn_system(
             player_query.iter_mut().map(|(.., player_location)| player_location).cloned(),
         )
     });
+
     // Spawn all missing players (if the wasm file was just loaded)
     for (handle, location) in handles
         .0
@@ -168,6 +172,7 @@ fn player_spawn_system(
             &mut spawn_event,
             &assets,
             &mut texture_atlases,
+            &team_query,
             &mut commands,
         )
         .ok();
@@ -186,6 +191,7 @@ fn spawn_player(
     spawn_event: &mut EventWriter<SpawnPlayerEvent>,
     assets: &Assets<WasmPlayerAsset>,
     texture_atlases: &mut ResMut<Assets<TextureAtlas>>,
+    team_query: &Query<&Team>,
     commands: &mut Commands,
 ) -> Result<(), anyhow::Error> {
     let texture_handle = asset_server.load("graphics/Sprites/Bomberman/sheet.png");
@@ -219,6 +225,18 @@ fn spawn_player(
         return Err(anyhow!("Wasm failed to return team name, invalidating handle."));
     };
 
+    let team = team_query.iter().cloned().find(|Team { name, .. }| name == &team_name);
+
+    let team = team.unwrap_or_else(|| {
+        let mut available_colors = tonari_color::team_colors_bevy()
+            .filter(|c| !team_query.iter().any(|Team { color, .. }| color == c))
+            .collect::<Vec<_>>();
+        available_colors.shuffle(&mut thread_rng());
+
+        let color = available_colors.into_iter().next().unwrap_or_default();
+        Team { name: team_name.clone(), color }
+    });
+
     info!("{} from team {} has entered the game!", name, team_name);
     spawn_event.send(SpawnPlayerEvent(PlayerName(name.clone())));
     commands
@@ -234,6 +252,7 @@ fn spawn_player(
         .insert_bundle(SpriteSheetBundle {
             sprite: TextureAtlasSprite {
                 index: 2,
+                color: team.color,
                 custom_size: Some(Vec2::new(PLAYER_WIDTH_PX, PLAYER_HEIGHT_PX)),
                 ..Default::default()
             },
@@ -244,6 +263,7 @@ fn spawn_player(
             ),
             ..default()
         })
+        .insert(team)
         .with_children(move |p| {
             // Text needs to be a child in order to be offset from the player
             // location but still move with the player.
