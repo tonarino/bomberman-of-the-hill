@@ -1,7 +1,8 @@
 //! Defines a Bevy plugin that governs spawning, exploding and despawning of the bombs and flames.
 
 use bevy::prelude::*;
-use bomber_lib::world::{Direction, Object, Ticks, Tile};
+use bomber_lib::world::{Direction, Object, PowerUp, Ticks, Tile};
+use rand::{thread_rng, Rng};
 
 use crate::{
     game_map::{GameMap, TileLocation},
@@ -18,8 +19,9 @@ const BOMB_FUSE_LENGTH: Ticks = Ticks(4);
 // The initial number of tiles that an explosion reach in each direction.
 const INITIAL_BOMB_POWER: u32 = 2;
 const MAXIMUM_SIMULTANEOUS_BOMBS: usize = 2;
+const CHANCE_OF_POWERUP_ON_CRATE: f32 = 0.2;
 
-pub struct BombPlugin;
+pub struct ObjectPlugin;
 pub struct BombExplodeEvent {
     pub bomb: Entity,
     pub location: TileLocation,
@@ -32,17 +34,23 @@ pub struct SpawnBombEvent {
 }
 /// Marks a bomb placed on the game map.
 #[derive(Component)]
-struct Bomb;
+struct BombMarker;
 /// Marks the center of an explosion with flames in each direction.
 #[derive(Component)]
-struct Explosion;
+struct ExplosionMarker;
 /// Marks a flame placed on the game map.
 #[derive(Component)]
-pub struct Flame;
+pub struct FlameMarker;
+/// Marks a powerup placed on the game map.
+#[derive(Component)]
+struct PowerUpMarker;
 
 struct Textures {
     bomb: Handle<Image>,
     flame: Handle<Image>,
+    bomb_range_power_up: Handle<Image>,
+    simultaneous_bombs_power_up: Handle<Image>,
+    boots_power_up: Handle<Image>,
 }
 
 struct SoundEffects {
@@ -50,13 +58,17 @@ struct SoundEffects {
     drop: Handle<AudioSource>,
 }
 
-impl Plugin for BombPlugin {
+impl Plugin for ObjectPlugin {
     fn build(&self, app: &mut App) {
         let asset_server =
             app.world.get_resource::<AssetServer>().expect("Failed to retrieve asset server");
         let textures = Textures {
             bomb: asset_server.load("graphics/Sprites/Bomb/Bomb_f01.png"),
             flame: asset_server.load("graphics/Sprites/Flame/Flame_f01.png"),
+            bomb_range_power_up: asset_server.load("graphics/Sprites/Powerups/FlamePowerup.png"),
+            simultaneous_bombs_power_up: asset_server
+                .load("graphics/Sprites/Powerups/BombPowerup.png"),
+            boots_power_up: asset_server.load("graphics/Sprites/Powerups/SpeedPowerup.png"),
         };
         let sound_effects = SoundEffects {
             explosion: asset_server.load("audio/sound_effects/bomb-explosion.mp3"),
@@ -82,7 +94,7 @@ impl Plugin for BombPlugin {
 fn bomb_spawn_system(
     mut spawn_event_reader: EventReader<SpawnBombEvent>,
     game_map_query: Query<&GameMap>,
-    bomb_query: Query<&Owner, With<Bomb>>,
+    bomb_query: Query<&Owner, With<BombMarker>>,
     textures: Res<Textures>,
     audio: Res<Audio>,
     sound_effects: Res<SoundEffects>,
@@ -114,7 +126,7 @@ fn spawn_bomb(
 ) {
     commands
         .spawn()
-        .insert(Bomb)
+        .insert(BombMarker)
         .insert(Owner(owner))
         .insert(ExternalCrateComponent(Object::Bomb { fuse_remaining: BOMB_FUSE_LENGTH }))
         .insert(*location)
@@ -130,7 +142,10 @@ fn spawn_bomb(
 
 fn fuse_remaining_system(
     mut ticks: EventReader<Tick>,
-    mut bomb_query: Query<(Entity, &TileLocation, &mut ExternalCrateComponent<Object>), With<Bomb>>,
+    mut bomb_query: Query<
+        (Entity, &TileLocation, &mut ExternalCrateComponent<Object>),
+        With<BombMarker>,
+    >,
     mut explode_events: EventWriter<BombExplodeEvent>,
 ) {
     for _ in ticks.iter().filter(|t| matches!(t, Tick::World)) {
@@ -155,7 +170,7 @@ fn bomb_explosion_system(
     tile_query: Query<(&TileLocation, &ExternalCrateComponent<Tile>)>,
     object_query: Query<
         (&TileLocation, &ExternalCrateComponent<Object>),
-        (Without<Bomb>, Without<Player>),
+        (Without<BombMarker>, Without<Player>),
     >,
     player_query: Query<(&TileLocation, Entity, &PlayerName, &Score), With<Player>>,
     mut kill_events: EventWriter<KillPlayerEvent>,
@@ -170,8 +185,11 @@ fn bomb_explosion_system(
     let mut any_bomb_exploded = false;
     for BombExplodeEvent { bomb, location } in exploded_bombs.iter() {
         commands.entity(*bomb).despawn_recursive();
-        commands.spawn().insert(Explosion).insert_bundle(SpriteBundle::default()).with_children(
-            |parent| {
+        commands
+            .spawn()
+            .insert(ExplosionMarker)
+            .insert_bundle(SpriteBundle::default())
+            .with_children(|parent| {
                 spawn_flames(
                     parent,
                     location,
@@ -183,8 +201,7 @@ fn bomb_explosion_system(
                     game_map,
                     &textures,
                 );
-            },
-        );
+            });
         any_bomb_exploded = true;
     }
 
@@ -199,7 +216,7 @@ fn spawn_flames(
     tile_query: &Query<(&TileLocation, &ExternalCrateComponent<Tile>)>,
     object_query: &Query<
         (&TileLocation, &ExternalCrateComponent<Object>),
-        (Without<Bomb>, Without<Player>),
+        (Without<BombMarker>, Without<Player>),
     >,
     player_query: &Query<(&TileLocation, Entity, &PlayerName, &Score), With<Player>>,
     kill_events: &mut EventWriter<KillPlayerEvent>,
@@ -245,7 +262,7 @@ fn spawn_flame(
     game_map: &GameMap,
     textures: &Textures,
 ) {
-    parent.spawn().insert(Flame).insert(*location).insert_bundle(SpriteBundle {
+    parent.spawn().insert(FlameMarker).insert(*location).insert_bundle(SpriteBundle {
         texture: textures.flame.clone(),
         transform: Transform::from_translation(
             location.as_world_coordinates(game_map).extend(FLAME_Z),
@@ -257,10 +274,12 @@ fn spawn_flame(
 
 /// Handle objects being blasted by bomb's explosion.
 fn objects_on_fire_system(
-    flame_query: Query<&TileLocation, With<Flame>>,
+    flame_query: Query<&TileLocation, With<FlameMarker>>,
     object_query: Query<(Entity, &TileLocation, &ExternalCrateComponent<Object>)>,
     mut explode_events: EventWriter<BombExplodeEvent>,
     mut commands: Commands,
+    game_map_query: Query<&GameMap>,
+    textures: Res<Textures>,
 ) {
     let on_fire = |&(_, location, _): &(_, _, _)| flame_query.iter().any(|l| l == location);
     for (entity, location, object) in object_query.iter().filter(on_fire) {
@@ -268,14 +287,66 @@ fn objects_on_fire_system(
             Object::Bomb { .. } => {
                 explode_events.send(BombExplodeEvent { bomb: entity, location: *location })
             },
-            Object::Crate => commands.entity(entity).despawn_recursive(),
+            Object::Crate => {
+                blow_up_crate(&mut commands, entity, *location, game_map_query.single(), &textures)
+            },
+            Object::PowerUp(_) => (),
         }
     }
 }
 
+fn blow_up_crate(
+    commands: &mut Commands,
+    entity: Entity,
+    location: TileLocation,
+    game_map: &GameMap,
+    textures: &Textures,
+) {
+    commands.entity(entity).despawn_recursive();
+    let mut rng = thread_rng();
+    if rng.gen::<f32>() < CHANCE_OF_POWERUP_ON_CRATE {
+        let power_up = match rng.gen_range(0..=2) as u32 {
+            0 => PowerUp::BombRange,
+            1 => PowerUp::DashBoot,
+            2 => PowerUp::SimultaneousBombs,
+            _ => unreachable!(),
+        };
+        spawn_power_up(power_up, commands, location, game_map, textures);
+    }
+}
+
+fn spawn_power_up(
+    power_up: PowerUp,
+    commands: &mut Commands,
+    location: TileLocation,
+    game_map: &GameMap,
+    textures: &Textures,
+) {
+    commands
+        .spawn()
+        .insert(PowerUpMarker)
+        .insert(ExternalCrateComponent(Object::PowerUp(power_up)))
+        .insert(location)
+        .insert_bundle(SpriteBundle {
+            texture: match power_up {
+                PowerUp::BombRange => textures.bomb_range_power_up.clone(),
+                PowerUp::SimultaneousBombs => textures.simultaneous_bombs_power_up.clone(),
+                PowerUp::DashBoot => textures.boots_power_up.clone(),
+            },
+            transform: Transform::from_translation(
+                location.as_world_coordinates(game_map).extend(GAME_OBJECT_Z),
+            ),
+            sprite: Sprite {
+                custom_size: Some(Vec2::splat(TILE_WIDTH_PX * 3.0 / 4.0)),
+                ..Default::default()
+            },
+            ..Default::default()
+        });
+}
+
 fn explosion_despawn_system(
     mut ticks: EventReader<Tick>,
-    explosion_query: Query<Entity, With<Explosion>>,
+    explosion_query: Query<Entity, With<ExplosionMarker>>,
     mut commands: Commands,
 ) {
     // We despawn explosions during player ticks as they're just a visual
@@ -287,7 +358,10 @@ fn explosion_despawn_system(
     }
 }
 
-fn cleanup(bomb_query: Query<Entity, Or<(With<Bomb>, With<Explosion>)>>, mut commands: Commands) {
+fn cleanup(
+    bomb_query: Query<Entity, Or<(With<BombMarker>, With<ExplosionMarker>)>>,
+    mut commands: Commands,
+) {
     for entity in bomb_query.iter() {
         commands.entity(entity).despawn_recursive();
     }

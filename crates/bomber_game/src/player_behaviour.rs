@@ -16,10 +16,10 @@ use wasmtime::Store;
 
 use crate::{
     animation::AnimationState,
-    bomb::SpawnBombEvent,
     game_map::{GameMap, PlayerSpawner, TileLocation},
     game_ui::tonari_color,
     log_recoverable_error, log_unrecoverable_error_and_panic,
+    object::SpawnBombEvent,
     player_hotswap::{PlayerHandle, PlayerHandles, WasmPlayerAsset},
     rendering::{
         PLAYER_HEIGHT_PX, PLAYER_VERTICAL_OFFSET_PX, PLAYER_WIDTH_PX, PLAYER_Z, SKELETON_HEIGHT_PX,
@@ -614,12 +614,12 @@ fn move_player(
         .iter()
         .find_map(|(l, t)| (*l == target_location).then(|| t))
         .ok_or_else(|| anyhow!("No tile at target location ({})", player_name))?;
-    let objects_on_target_tile =
-        object_query.iter().filter(|(l, _)| (*l == &target_location)).count();
+    let solid_objects_on_tile =
+        object_query.iter().filter(|(l, o)| (*l == &target_location && o.is_solid())).count();
     let players_on_target_tile = player_locations.filter(|l| *l == target_location).count();
 
     match **target_tile {
-        Tile::Floor | Tile::Hill if objects_on_target_tile + players_on_target_tile == 0 => {
+        Tile::Floor | Tile::Hill if solid_objects_on_tile + players_on_target_tile == 0 => {
             info!("{} moves to {:?}", player_name, target_location);
             event_writer.send(PlayerMovedEvent {
                 entity: player_entity,

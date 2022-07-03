@@ -5,7 +5,7 @@ use anyhow::Result;
 use bevy::prelude::*;
 use bevy_tweening::TweeningPlugin;
 
-use bomb::BombPlugin;
+use object::ObjectPlugin;
 
 use game_map::GameMapPlugin;
 use game_ui::GameUiPlugin;
@@ -17,9 +17,9 @@ use tick::TickPlugin;
 use victory_screen::VictoryScreenPlugin;
 
 mod animation;
-mod bomb;
 mod game_map;
 mod game_ui;
+mod object;
 mod player_behaviour;
 mod player_hotswap;
 mod rendering;
@@ -55,7 +55,7 @@ fn main() -> Result<()> {
         .add_plugin(ScorePlugin)
         .add_plugin(PlayerBehaviourPlugin)
         .add_plugin(PlayerHotswapPlugin)
-        .add_plugin(BombPlugin)
+        .add_plugin(ObjectPlugin)
         .add_plugin(VictoryScreenPlugin)
         .add_plugin(GameUiPlugin)
         .add_plugin(AnimationPlugin)

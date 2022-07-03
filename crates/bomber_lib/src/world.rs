@@ -21,7 +21,24 @@ pub enum Tile {
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub enum Object {
     Bomb { fuse_remaining: Ticks },
+    PowerUp(PowerUp),
     Crate,
+}
+
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub enum PowerUp {
+    BombRange,
+    SimultaneousBombs,
+    DashBoot,
+}
+
+impl Object {
+    pub fn is_solid(&self) -> bool {
+        match self {
+            Object::Bomb { .. } | Object::Crate => true,
+            Object::PowerUp(_) => false,
+        }
+    }
 }
 
 /// Ticks measure game time. Players make one decision per tick.
