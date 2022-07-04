@@ -43,11 +43,11 @@ pub struct FlameMarker;
 #[derive(Component)]
 struct PowerUpMarker;
 
-struct Textures {
-    bomb: Handle<Image>,
-    flame: Handle<Image>,
-    bomb_range_power_up: Handle<Image>,
-    simultaneous_bombs_power_up: Handle<Image>,
+pub struct Textures {
+    pub bomb: Handle<Image>,
+    pub flame: Handle<Image>,
+    pub bomb_range_power_up: Handle<Image>,
+    pub simultaneous_bombs_power_up: Handle<Image>,
 }
 
 struct SoundEffects {
