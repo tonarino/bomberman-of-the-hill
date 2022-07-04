@@ -83,6 +83,7 @@ impl Plugin for ObjectPlugin {
                 SystemSet::on_update(AppState::InGame)
                     .with_system(bomb_spawn_system)
                     .with_system(fuse_remaining_system)
+                    .with_system(pick_up_power_up_system)
                     .with_system(bomb_explosion_system)
                     .with_system(objects_on_fire_system)
                     .with_system(explosion_despawn_system),
@@ -354,6 +355,30 @@ fn explosion_despawn_system(
     for _ in ticks.iter().filter(|t| matches!(t, Tick::Player)) {
         for entity in explosion_query.iter() {
             commands.entity(entity).despawn_recursive();
+        }
+    }
+}
+
+fn pick_up_power_up_system(
+    mut ticks: EventReader<Tick>,
+    mut player_query: Query<(&mut Player, &TileLocation)>,
+    power_up_query: Query<
+        (Entity, &ExternalCrateComponent<PowerUp>, &TileLocation),
+        Without<Player>,
+    >,
+    mut commands: Commands,
+) {
+    for _ in ticks.iter().filter(|t| matches!(t, Tick::World)) {
+        for (mut player, player_location) in player_query.iter_mut() {
+            if let Some((entity, power_up)) =
+                power_up_query.iter().find_map(|(entity, power_up, location)| {
+                    (location == player_location).then_some((entity, power_up))
+                })
+            {
+                *player.power_ups.entry(**power_up).or_insert(0) += 1;
+                // TODO add some visuals showing the powerup being acquired.
+                commands.entity(entity).despawn_recursive();
+            }
         }
     }
 }

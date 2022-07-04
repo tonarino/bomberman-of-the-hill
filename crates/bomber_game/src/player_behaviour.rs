@@ -4,11 +4,11 @@
 use std::time::Duration;
 
 use anyhow::{anyhow, Result};
-use bevy::prelude::*;
+use bevy::{prelude::*, utils::HashMap};
 use bevy_tweening::{lens::TransformPositionLens, *};
 use bomber_lib::{
     wasm_act, wasm_name, wasm_team_name,
-    world::{Direction, Object, Ticks, Tile, TileOffset},
+    world::{Direction, Object, PowerUp, Ticks, Tile, TileOffset},
     Action, LastTurnResult,
 };
 use rand::{prelude::SliceRandom, thread_rng};
@@ -41,6 +41,7 @@ pub struct Player {
     // The wasm fuel is internally tracked by the store, but it can't be accessed
     // through the `wasmtime` API, so we keep a separate count associated to the player.
     total_fuel_consumed: u64,
+    pub power_ups: HashMap<PowerUp, u32>,
 }
 
 #[derive(Component, Clone, Debug)]
@@ -243,7 +244,7 @@ fn spawn_player(
     spawn_event.send(SpawnPlayerEvent(PlayerName(name.clone())));
     commands
         .spawn()
-        .insert(Player { total_fuel_consumed: 0 })
+        .insert(Player { total_fuel_consumed: 0, power_ups: Default::default() })
         .insert(ExternalCrateComponent(instance))
         .insert(ExternalCrateComponent(store))
         .insert(location)
