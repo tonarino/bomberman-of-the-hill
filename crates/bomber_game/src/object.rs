@@ -16,9 +16,7 @@ use crate::{
 
 // A bomb explodes after this number of ticks since it's placed on the map.
 const BOMB_FUSE_LENGTH: Ticks = Ticks(4);
-// The initial number of tiles that an explosion reach in each direction.
-const INITIAL_BOMB_POWER: u32 = 2;
-const MAXIMUM_SIMULTANEOUS_BOMBS: usize = 2;
+const BASE_BOMB_POWER: u32 = 2;
 const CHANCE_OF_POWERUP_ON_CRATE: f32 = 0.2;
 
 pub struct ObjectPlugin;
@@ -96,6 +94,7 @@ fn bomb_spawn_system(
     mut spawn_event_reader: EventReader<SpawnBombEvent>,
     game_map_query: Query<&GameMap>,
     bomb_query: Query<&Owner, With<BombMarker>>,
+    player_query: Query<&Player>,
     textures: Res<Textures>,
     audio: Res<Audio>,
     sound_effects: Res<SoundEffects>,
@@ -105,7 +104,10 @@ fn bomb_spawn_system(
 
     let mut any_bomb_spawned = false;
     for SpawnBombEvent { location, owner } in spawn_event_reader.iter() {
-        if bomb_query.iter().filter(|Owner(o)| owner == o).count() < MAXIMUM_SIMULTANEOUS_BOMBS {
+        let player = player_query.get(*owner).expect("Bomb has an invalid owner");
+        let maximum_bombs =
+            1 + player.power_ups.get(&PowerUp::SimultaneousBombs).copied().unwrap_or_default();
+        if bomb_query.iter().filter(|Owner(o)| owner == o).count() < maximum_bombs as usize {
             spawn_bomb(location, *owner, game_map, &textures, &mut commands);
             any_bomb_spawned = true;
         } else {
@@ -173,7 +175,8 @@ fn bomb_explosion_system(
         (&TileLocation, &ExternalCrateComponent<Object>),
         (Without<BombMarker>, Without<Player>),
     >,
-    player_query: Query<(&TileLocation, Entity, &PlayerName, &Score), With<Player>>,
+    bomb_query: Query<&Owner, With<BombMarker>>,
+    player_query: Query<(&Player, &TileLocation, Entity, &PlayerName, &Score)>,
     mut kill_events: EventWriter<KillPlayerEvent>,
     game_map_query: Query<&GameMap>,
     textures: Res<Textures>,
@@ -185,6 +188,12 @@ fn bomb_explosion_system(
 
     let mut any_bomb_exploded = false;
     for BombExplodeEvent { bomb, location } in exploded_bombs.iter() {
+        let owner = bomb_query.get(*bomb).expect("Invalid bomb entity");
+        let power = if let Ok((player, ..)) = player_query.get(owner.0) {
+            BASE_BOMB_POWER + player.power_ups.get(&PowerUp::BombRange).copied().unwrap_or_default()
+        } else {
+            BASE_BOMB_POWER
+        };
         commands.entity(*bomb).despawn_recursive();
         commands
             .spawn()
@@ -198,7 +207,7 @@ fn bomb_explosion_system(
                     &object_query,
                     &player_query,
                     &mut kill_events,
-                    INITIAL_BOMB_POWER,
+                    power,
                     game_map,
                     &textures,
                 );
@@ -219,7 +228,7 @@ fn spawn_flames(
         (&TileLocation, &ExternalCrateComponent<Object>),
         (Without<BombMarker>, Without<Player>),
     >,
-    player_query: &Query<(&TileLocation, Entity, &PlayerName, &Score), With<Player>>,
+    player_query: &Query<(&Player, &TileLocation, Entity, &PlayerName, &Score)>,
     kill_events: &mut EventWriter<KillPlayerEvent>,
     bomb_power: u32,
     game_map: &GameMap,
@@ -246,12 +255,12 @@ fn spawn_flames(
                 break;
             }
 
-            if let Some((player, name, score)) =
+            if let Some((entity, name, score)) =
                 player_query
                     .iter()
-                    .find_map(|(l, e, n, s)| if *l == location { Some((e, n, s)) } else { None })
+                    .find_map(|(_, l, e, n, s)| if *l == location { Some((e, n, s)) } else { None })
             {
-                kill_events.send(KillPlayerEvent(player, name.clone(), *score));
+                kill_events.send(KillPlayerEvent(entity, name.clone(), *score));
             }
         }
     }
