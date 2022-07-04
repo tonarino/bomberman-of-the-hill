@@ -55,6 +55,7 @@ pub struct Team {
 
 pub struct KillPlayerEvent(pub Entity, pub PlayerName, pub Score);
 pub struct SpawnPlayerEvent(pub PlayerName);
+pub struct PlayerDespawnedEvent(pub PlayerName, pub Score, pub String);
 pub struct PlayerMovedEvent {
     pub entity: Entity,
     pub from: TileLocation,
@@ -91,6 +92,7 @@ impl Plugin for PlayerBehaviourPlugin {
         app.insert_resource(wasm_engine)
             .add_event::<SpawnPlayerEvent>()
             .add_event::<PlayerMovedEvent>()
+            .add_event::<PlayerDespawnedEvent>()
             .add_system_set(
                 SystemSet::on_update(AppState::InGame)
                     .with_system(player_spawn_system)
@@ -220,13 +222,17 @@ fn spawn_player(
     let name = if let Ok(name) = wasm_name(&mut store, &instance) {
         filter_name(&name, MAX_NAME_LENGTH)
     } else {
-        *handle = PlayerHandle::Misbehaved(handle.inner().clone());
+        *handle =
+            PlayerHandle::Misbehaved(handle.inner().clone(), "Failed to provide a name".into());
         return Err(anyhow!("Wasm failed to return name, invalidating handle."));
     };
     let team_name = if let Ok(team_name) = wasm_team_name(&mut store, &instance) {
         filter_name(&team_name, MAX_TEAM_NAME_LENGTH)
     } else {
-        *handle = PlayerHandle::Misbehaved(handle.inner().clone());
+        *handle = PlayerHandle::Misbehaved(
+            handle.inner().clone(),
+            "Failed to provide a team name".into(),
+        );
         return Err(anyhow!("Wasm failed to return team name, invalidating handle."));
     };
 
@@ -301,7 +307,7 @@ fn spawn_player_text(
             },
             TextAlignment { vertical: VerticalAlign::Center, horizontal: HorizontalAlign::Center },
         ),
-        transform: Transform::from_translation(Vec3::new(0.0, 46.0, 0.0)),
+        transform: Transform::from_translation(Vec3::new(0.0, 48.0, 0.0)),
         ..Default::default()
     });
     parent.spawn().insert_bundle(Text2dBundle {
@@ -314,7 +320,7 @@ fn spawn_player_text(
             },
             TextAlignment { vertical: VerticalAlign::Center, horizontal: HorizontalAlign::Center },
         ),
-        transform: Transform::from_translation(Vec3::new(0.0, 30.0, 0.0)),
+        transform: Transform::from_translation(Vec3::new(0.0, 32.0, 0.0)),
         ..Default::default()
     });
 }
@@ -396,7 +402,17 @@ fn player_action_system(
                     if let Some(handle) =
                         handles.0.iter_mut().find(|handle| handle.inner().id == handle_inner.id)
                     {
-                        handle.invalidate();
+                        let total_fuel_consumed =
+                            store.fuel_consumed().expect("Fuel consumption should be enabled");
+                        let fuel_consumed_this_turn = total_fuel_consumed
+                            .checked_sub(player.total_fuel_consumed)
+                            .expect("Invalid fuel count");
+                        let reason = if fuel_consumed_this_turn >= FUEL_PER_TICK {
+                            String::from("Ran out of WASM fuel")
+                        } else {
+                            String::from("Triggered a WASM error")
+                        };
+                        handle.invalidate(reason);
                     }
                     continue;
                 },
@@ -438,15 +454,21 @@ fn player_action_system(
 /// need to fix.
 fn player_ban_system(
     mut commands: Commands,
-    player_query: Query<(Entity, &Transform, &PlayerName, &Handle<WasmPlayerAsset>), With<Player>>,
+    player_query: Query<
+        (Entity, &Transform, &PlayerName, &Score, &Handle<WasmPlayerAsset>),
+        With<Player>,
+    >,
     asset_server: Res<AssetServer>,
     mut handles: ResMut<PlayerHandles>,
+    mut despawn_event: EventWriter<PlayerDespawnedEvent>,
 ) {
-    for (entity, transform, PlayerName(name), handle_inner) in player_query.iter() {
-        if let Some(PlayerHandle::Misbehaved(_)) =
+    for (entity, transform, name, score, handle_inner) in player_query.iter() {
+        if let Some(PlayerHandle::Misbehaved(_, reason)) =
             handles.0.iter_mut().find(|h| h.inner().id == handle_inner.id)
         {
-            info!("{name} has been forciby despawned (banned)!");
+            info!("{} has been forciby despawned (banned)!", name.0);
+            despawn_event.send(PlayerDespawnedEvent(name.clone(), *score, reason.clone()));
+
             commands.entity(entity).despawn_recursive();
             let texture_handle = asset_server.load("graphics/Sprites/Bomberman/Front/Cross.png");
             commands
@@ -467,16 +489,22 @@ fn player_ban_system(
 
 fn player_death_system(
     mut kill_events: EventReader<KillPlayerEvent>,
+    mut despawn_event: EventWriter<PlayerDespawnedEvent>,
     mut commands: Commands,
     mut player_query: Query<(Entity, &Transform, &Handle<WasmPlayerAsset>), With<Player>>,
     asset_server: Res<AssetServer>,
     mut handles: ResMut<PlayerHandles>,
 ) {
-    for KillPlayerEvent(entity, PlayerName(name), _) in kill_events.iter() {
+    for KillPlayerEvent(entity, name, score) in kill_events.iter() {
         for (entity, transform, handle) in player_query.iter_mut().filter(|(e, ..)| e == entity) {
             // The handle will be picked up and the player will be automatically respawned with
             // fresh `wasm` state.
-            info!("{name} has died!");
+            info!("{} has died!", name.0);
+            despawn_event.send(PlayerDespawnedEvent(
+                name.clone(),
+                *score,
+                "Killed by a bomb".into(),
+            ));
             commands.entity(entity).despawn_recursive();
             let texture_handle = asset_server.load("graphics/Sprites/Bomberman/Front/Dead.png");
             commands
@@ -504,7 +532,7 @@ fn player_respawn_system(mut ticks: EventReader<Tick>, mut handles: ResMut<Playe
         for handle in handles.0.iter_mut() {
             match handle {
                 PlayerHandle::ReadyToSpawn(_) => (),
-                PlayerHandle::Misbehaved(_) => (),
+                PlayerHandle::Misbehaved(..) => (),
                 PlayerHandle::Respawning(_, Ticks(t)) if *t > 0 => *t -= 1,
                 PlayerHandle::Respawning(h, _) => {
                     *handle = PlayerHandle::ReadyToSpawn(h.clone());

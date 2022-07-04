@@ -6,7 +6,7 @@ use bevy_egui::{
 
 use crate::{
     object,
-    player_behaviour::{KillPlayerEvent, Player, PlayerName, SpawnPlayerEvent},
+    player_behaviour::{Player, PlayerDespawnedEvent, PlayerName, SpawnPlayerEvent},
     rendering::TILE_HEIGHT_PX,
     score::Score,
     state::{AppState, RoundTimer},
@@ -17,7 +17,9 @@ pub struct GameUiPlugin;
 /// Marker component that identifies a score/name pair as belonging to a dead
 /// (despawned) player, so their last score is visible until they respawn.
 #[derive(Component)]
-struct DeadPlayerScore;
+struct DespawnedPlayerMarker {
+    reason: String,
+}
 
 impl Plugin for GameUiPlugin {
     fn build(&self, app: &mut App) {
@@ -30,13 +32,14 @@ impl Plugin for GameUiPlugin {
 
 fn score_panel_system(
     mut egui_context: ResMut<EguiContext>,
-    player_query: Query<(&Player, &PlayerName, &Score, Option<&DeadPlayerScore>)>,
+    player_query: Query<(&Player, &PlayerName, &Score)>,
+    dead_query: Query<(&PlayerName, &Score, &DespawnedPlayerMarker)>,
     round_timer_query: Query<&RoundTimer>,
     textures: Res<object::Textures>,
 ) {
     let mut score_entries = player_query.iter().collect::<Vec<_>>();
     // Sort by descending score
-    score_entries.sort_by(|(_, _, Score(a), _), (_, _, Score(b), _)| b.cmp(a));
+    score_entries.sort_by(|(_, _, Score(a)), (_, _, Score(b))| b.cmp(a));
     let timer = round_timer_query.single();
     let remaining = timer.0.duration() - timer.0.elapsed();
     let (minutes, seconds) = (remaining.as_secs() / 60, remaining.as_secs() % 60);
@@ -54,24 +57,14 @@ fn score_panel_system(
             ui.separator();
             ui.heading(RichText::new("Player Score").strong());
             egui::Grid::new("Score Grid").striped(true).show(ui, |ui| {
-                for (Player { power_ups, .. }, PlayerName(name), score, dead_marker) in
-                    score_entries.iter()
-                {
+                for (Player { power_ups, .. }, PlayerName(name), score) in score_entries.iter() {
                     ui.colored_label(
-                        if dead_marker.is_some() {
-                            tonari_color::STRAWBERRY_LETTER_23
-                        } else {
-                            tonari_color::MIDNIGHT
-                        },
+                        tonari_color::MIDNIGHT,
                         RichText::new(name).text_style(egui::TextStyle::Heading),
                     );
                     ui.label(
-                        RichText::new(format!(
-                            " {: >3}{}",
-                            score.0,
-                            if dead_marker.is_some() { " (Dead)" } else { " points " }
-                        ))
-                        .text_style(egui::TextStyle::Heading),
+                        RichText::new(format!(" {: >3} points", score.0,))
+                            .text_style(egui::TextStyle::Heading),
                     );
                     ui.end_row();
                     ui.horizontal(|ui| {
@@ -105,6 +98,23 @@ fn score_panel_system(
                     });
                     ui.end_row();
                 }
+                for (PlayerName(name), score, DespawnedPlayerMarker { reason }) in dead_query.iter()
+                {
+                    ui.colored_label(
+                        tonari_color::STRAWBERRY_LETTER_23,
+                        RichText::new(name).strikethrough().text_style(egui::TextStyle::Heading),
+                    );
+                    ui.label(
+                        RichText::new(format!(" {: >3} (Dead)", score.0,))
+                            .text_style(egui::TextStyle::Heading),
+                    );
+                    ui.end_row();
+                    ui.colored_label(
+                        tonari_color::STRAWBERRY_LETTER_23,
+                        RichText::new(reason).strong(),
+                    );
+                    ui.end_row();
+                }
                 ui.allocate_space(ui.available_size());
             });
         });
@@ -113,9 +123,9 @@ fn score_panel_system(
 
 fn dead_player_score_system(
     mut spawn_events: EventReader<SpawnPlayerEvent>,
-    mut kill_events: EventReader<KillPlayerEvent>,
+    mut despawn_events: EventReader<PlayerDespawnedEvent>,
     mut commands: Commands,
-    dead_player_scores: Query<(Entity, &DeadPlayerScore, &PlayerName)>,
+    dead_player_scores: Query<(Entity, &DespawnedPlayerMarker, &PlayerName)>,
 ) {
     for SpawnPlayerEvent(name) in spawn_events.iter() {
         if let Some(entity) =
@@ -124,10 +134,14 @@ fn dead_player_score_system(
             commands.entity(entity).despawn_recursive();
         }
     }
-    for KillPlayerEvent(_, name, score) in kill_events.iter() {
+    for PlayerDespawnedEvent(name, score, reason) in despawn_events.iter() {
         // The player themselves will be despawned this frame, but we instead insert a score marker that will persist
         // until they despawn.
-        commands.spawn().insert(name.clone()).insert(*score).insert(DeadPlayerScore);
+        commands
+            .spawn()
+            .insert(name.clone())
+            .insert(*score)
+            .insert(DespawnedPlayerMarker { reason: reason.clone() });
     }
 }
 
