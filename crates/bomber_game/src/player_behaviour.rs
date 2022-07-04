@@ -156,12 +156,13 @@ fn player_spawn_system(
     });
 
     // Spawn all missing players (if the wasm file was just loaded)
-    for (handle, location) in handles
+    if let Some((handle, location)) = handles
         .0
         .iter_mut()
         .filter(|handle| handle.is_ready_to_spawn())
         .filter(|handle| player_query.iter_mut().all(|(_, h, _)| h.id != handle.inner().id))
         .zip(available_spawn_locations.iter().rev())
+        .next()
     {
         spawn_player(
             handle,
