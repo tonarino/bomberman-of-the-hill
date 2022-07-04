@@ -313,7 +313,7 @@ fn blow_up_crate(
     commands.entity(entity).despawn_recursive();
     let mut rng = thread_rng();
     if rng.gen::<f32>() < CHANCE_OF_POWERUP_ON_CRATE {
-        let power_up = match rng.gen_range(0..=2) as u32 {
+        let power_up = match rng.gen_range(0..=1) as u32 {
             0 => PowerUp::BombRange,
             1 => PowerUp::SimultaneousBombs,
             _ => unreachable!(),
@@ -380,7 +380,9 @@ fn pick_up_power_up_system(
                     (location == player_location).then_some((entity, power_up))
                 })
             {
-                *player.power_ups.entry(**power_up).or_insert(0) += 1;
+                let power_up_count = player.power_ups.entry(**power_up).or_insert(0);
+                *power_up_count = (*power_up_count + 1).min(power_up.max());
+
                 // TODO add some visuals showing the powerup being acquired.
                 commands.entity(entity).despawn_recursive();
             }

@@ -40,6 +40,15 @@ impl Object {
     }
 }
 
+impl PowerUp {
+    pub const fn max(&self) -> u32 {
+        match self {
+            PowerUp::BombRange => 5,
+            PowerUp::SimultaneousBombs => 3,
+        }
+    }
+}
+
 /// Ticks measure game time. Players make one decision per tick.
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Serialize, Deserialize)]
 pub struct Ticks(pub u32);
