@@ -17,7 +17,7 @@ use crate::{
 // A bomb explodes after this number of ticks since it's placed on the map.
 const BOMB_FUSE_LENGTH: Ticks = Ticks(4);
 const BASE_BOMB_POWER: u32 = 2;
-const CHANCE_OF_POWERUP_ON_CRATE: f32 = 0.2;
+const CHANCE_OF_POWERUP_ON_CRATE: f32 = 0.3;
 
 pub struct ObjectPlugin;
 pub struct BombExplodeEvent {
@@ -368,8 +368,8 @@ fn pick_up_power_up_system(
     mut ticks: EventReader<Tick>,
     mut player_query: Query<(&mut Player, &TileLocation)>,
     power_up_query: Query<
-        (Entity, &ExternalCrateComponent<PowerUp>, &TileLocation),
-        Without<Player>,
+        (Entity, &ExternalCrateComponent<Object>, &TileLocation),
+        (With<PowerUpMarker>, Without<Player>),
     >,
     mut commands: Commands,
 ) {
@@ -380,7 +380,12 @@ fn pick_up_power_up_system(
                     (location == player_location).then_some((entity, power_up))
                 })
             {
-                let power_up_count = player.power_ups.entry(**power_up).or_insert(0);
+                let power_up = if let Object::PowerUp(power_up) = **power_up {
+                    power_up
+                } else {
+                    panic!("Object incorrectly marked as a powerup");
+                };
+                let power_up_count = player.power_ups.entry(power_up).or_insert(0);
                 *power_up_count = (*power_up_count + 1).min(power_up.max());
 
                 // TODO add some visuals showing the powerup being acquired.
