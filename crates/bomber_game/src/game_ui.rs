@@ -153,7 +153,7 @@ fn configure_visuals(mut egui_ctx: ResMut<EguiContext>) {
 pub mod tonari_color {
     use bevy::prelude::*;
 
-    trait EguiColorExt {
+    pub trait EguiColorExt {
         fn to_bevy_color(self) -> Color;
     }
 

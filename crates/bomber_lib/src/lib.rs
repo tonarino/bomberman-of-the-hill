@@ -21,7 +21,9 @@ pub trait Player: Default {
         surroundings: Vec<(Tile, Option<Object>, TileOffset)>,
         last_result: LastTurnResult,
     ) -> Action;
+    /// Limit of 10 characters!
     fn name(&self) -> String;
+    /// Limit of 20 characters!
     fn team_name() -> String;
 }
 

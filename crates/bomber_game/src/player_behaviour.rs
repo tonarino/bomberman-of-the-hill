@@ -31,6 +31,9 @@ use crate::{
     ExternalCrateComponent,
 };
 
+const MAX_NAME_LENGTH: usize = 10;
+const MAX_TEAM_NAME_LENGTH: usize = 20;
+
 pub struct PlayerBehaviourPlugin;
 
 #[derive(Component, Clone)]
@@ -215,14 +218,13 @@ fn spawn_player(
     let instance = wasmtime::Instance::new(&mut store, &module, &[])?;
 
     let name = if let Ok(name) = wasm_name(&mut store, &instance) {
-        name
+        filter_name(&name, MAX_NAME_LENGTH)
     } else {
         *handle = PlayerHandle::Misbehaved(handle.inner().clone());
         return Err(anyhow!("Wasm failed to return name, invalidating handle."));
     };
-    let name = filter_name(&name);
     let team_name = if let Ok(team_name) = wasm_team_name(&mut store, &instance) {
-        team_name
+        filter_name(&team_name, MAX_TEAM_NAME_LENGTH)
     } else {
         *handle = PlayerHandle::Misbehaved(handle.inner().clone());
         return Err(anyhow!("Wasm failed to return team name, invalidating handle."));
@@ -266,33 +268,49 @@ fn spawn_player(
             ),
             ..default()
         })
-        .insert(team)
-        .with_children(move |p| {
+        .with_children(|p| {
             // Text needs to be a child in order to be offset from the player
             // location but still move with the player.
-            spawn_player_text(p, asset_server, name);
-        });
+            spawn_player_text(p, asset_server, name, &team);
+        })
+        .insert(team);
     Ok(())
 }
 
-fn filter_name(name: &str) -> String {
-    const MAX_NAME_CHARS: usize = 16;
-
+fn filter_name(name: &str, length: usize) -> String {
     // Only take the first line of text, and limit it to 16 chars.
     name.lines()
         .next()
-        .map(|line| line.chars().take(MAX_NAME_CHARS).collect())
+        .map(|line| line.chars().take(length).collect())
         .unwrap_or_else(|| "Trickster".to_string())
 }
 
-fn spawn_player_text(parent: &mut ChildBuilder, asset_server: &AssetServer, name: String) {
+fn spawn_player_text(
+    parent: &mut ChildBuilder,
+    asset_server: &AssetServer,
+    name: String,
+    team: &Team,
+) {
     parent.spawn().insert_bundle(Text2dBundle {
         text: Text::with_section(
             name,
             TextStyle {
                 font: asset_server.load("fonts/space_mono_400.ttf"),
-                font_size: 30.0,
+                font_size: 24.0,
                 color: Color::WHITE,
+            },
+            TextAlignment { vertical: VerticalAlign::Center, horizontal: HorizontalAlign::Center },
+        ),
+        transform: Transform::from_translation(Vec3::new(0.0, 46.0, 0.0)),
+        ..Default::default()
+    });
+    parent.spawn().insert_bundle(Text2dBundle {
+        text: Text::with_section(
+            format!("Team {}", team.name.clone()),
+            TextStyle {
+                font: asset_server.load("fonts/space_mono_400.ttf"),
+                font_size: 16.0,
+                color: team.color,
             },
             TextAlignment { vertical: VerticalAlign::Center, horizontal: HorizontalAlign::Center },
         ),
