@@ -48,6 +48,7 @@ pub struct Textures {
     pub flame: Handle<Image>,
     pub bomb_range_power_up: Handle<Image>,
     pub simultaneous_bombs_power_up: Handle<Image>,
+    pub vision_range_power_up: Handle<Image>,
 }
 
 struct SoundEffects {
@@ -65,6 +66,7 @@ impl Plugin for ObjectPlugin {
             bomb_range_power_up: asset_server.load("graphics/Sprites/Powerups/FlamePowerup.png"),
             simultaneous_bombs_power_up: asset_server
                 .load("graphics/Sprites/Powerups/BombPowerup.png"),
+            vision_range_power_up: asset_server.load("graphics/Sprites/Powerups/EyePowerup.png"),
         };
         let sound_effects = SoundEffects {
             explosion: asset_server.load("audio/sound_effects/bomb-explosion.mp3"),
@@ -316,6 +318,7 @@ fn blow_up_crate(
         let power_up = match rng.gen_range(0..=1) as u32 {
             0 => PowerUp::BombRange,
             1 => PowerUp::SimultaneousBombs,
+            2 => PowerUp::VisionRange,
             _ => unreachable!(),
         };
         spawn_power_up(power_up, commands, location, game_map, textures);
@@ -338,6 +341,7 @@ fn spawn_power_up(
             texture: match power_up {
                 PowerUp::BombRange => textures.bomb_range_power_up.clone(),
                 PowerUp::SimultaneousBombs => textures.simultaneous_bombs_power_up.clone(),
+                PowerUp::VisionRange => todo!(),
             },
             transform: Transform::from_translation(
                 location.as_world_coordinates(game_map).extend(GAME_OBJECT_Z),

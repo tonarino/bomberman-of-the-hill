@@ -29,6 +29,7 @@ pub enum Object {
 pub enum PowerUp {
     BombRange,
     SimultaneousBombs,
+    VisionRange,
 }
 
 impl Object {
@@ -45,6 +46,7 @@ impl PowerUp {
         match self {
             PowerUp::BombRange => 5,
             PowerUp::SimultaneousBombs => 3,
+            PowerUp::VisionRange => 5,
         }
     }
 }

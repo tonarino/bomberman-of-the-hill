@@ -36,7 +36,7 @@ fn score_panel_system(
 ) {
     let mut score_entries = player_query.iter().collect::<Vec<_>>();
     // Sort by descending score
-    score_entries.sort_by(|(_, _, Score(a), _), (_, _, Score(b), _)| b.cmp(&a));
+    score_entries.sort_by(|(_, _, Score(a), _), (_, _, Score(b), _)| b.cmp(a));
     let timer = round_timer_query.single();
     let remaining = timer.0.duration() - timer.0.elapsed();
     let (minutes, seconds) = (remaining.as_secs() / 60, remaining.as_secs() % 60);
@@ -44,6 +44,7 @@ fn score_panel_system(
     let bomb_range_power_up = egui_context.add_image(textures.bomb_range_power_up.clone_weak());
     let simultaneous_bombs_power_up =
         egui_context.add_image(textures.simultaneous_bombs_power_up.clone_weak());
+    let vision_range_power_up = egui_context.add_image(textures.vision_range_power_up.clone_weak());
 
     egui::SidePanel::left("Player Score").resizable(false).show(egui_context.ctx_mut(), |ui| {
         ui.vertical_centered_justified(|ui| {
@@ -90,6 +91,14 @@ fn score_panel_system(
                             "x{}",
                             power_ups
                                 .get(&bomber_lib::world::PowerUp::SimultaneousBombs)
+                                .copied()
+                                .unwrap_or_default()
+                        ));
+                        ui.image(vision_range_power_up, egui::Vec2::splat(TILE_HEIGHT_PX / 2.0));
+                        ui.label(format!(
+                            "x{}",
+                            power_ups
+                                .get(&bomber_lib::world::PowerUp::VisionRange)
                                 .copied()
                                 .unwrap_or_default()
                         ));

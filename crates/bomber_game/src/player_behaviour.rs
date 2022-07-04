@@ -63,7 +63,7 @@ pub struct PlayerMovedEvent {
 pub struct Owner(pub Entity);
 
 /// How far player characters can see their surroundings
-const PLAYER_VIEW_TAXICAB_DISTANCE: u32 = 5;
+const BASE_PLAYER_VIEW_TAXICAB_DISTANCE: u32 = 4;
 
 /// Visual representation of a dead player
 #[derive(Component)]
@@ -370,6 +370,7 @@ fn player_action_system(
                 &location,
                 &tile_query,
                 &object_query,
+                &player,
             ) {
                 Ok(action) => action,
                 Err(error) => {
@@ -647,14 +648,17 @@ fn wasm_player_action(
         (&TileLocation, &ExternalCrateComponent<Object>),
         (Without<Player>, Without<ExternalCrateComponent<Tile>>),
     >,
+    player: &Player,
 ) -> Result<Action> {
     let last_result = LastTurnResult::StoodStill; // TODO close the LastTurnResult loop.
+    let view_distance = BASE_PLAYER_VIEW_TAXICAB_DISTANCE
+        + player.power_ups.get(&PowerUp::VisionRange).copied().unwrap_or_default();
     let player_surroundings: Vec<(Tile, Option<Object>, TileOffset)> = tile_query
         .iter()
         .filter_map(|(location, tile)| {
             let object_on_tile =
                 object_query.iter().find_map(|(l, o)| (l == location).then(|| &*o));
-            ((*location - *player_location).taxicab_distance() <= PLAYER_VIEW_TAXICAB_DISTANCE)
+            ((*location - *player_location).taxicab_distance() <= view_distance)
                 .then(|| (**tile, object_on_tile.map(|o| **o), (*location - *player_location)))
         })
         .collect();
