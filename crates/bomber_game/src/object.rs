@@ -16,7 +16,7 @@ use crate::{
 
 // A bomb explodes after this number of ticks since it's placed on the map.
 const BOMB_FUSE_LENGTH: Ticks = Ticks(4);
-const BASE_BOMB_POWER: u32 = 2;
+const BASE_BOMB_RANGE: u32 = 2;
 const CHANCE_OF_POWERUP_ON_CRATE: f32 = 0.3;
 
 pub struct ObjectPlugin;
@@ -105,10 +105,12 @@ fn bomb_spawn_system(
     let mut any_bomb_spawned = false;
     for SpawnBombEvent { location, owner } in spawn_event_reader.iter() {
         let player = player_query.get(*owner).expect("Bomb has an invalid owner");
+        let range = BASE_BOMB_RANGE
+            + player.power_ups.get(&PowerUp::BombRange).copied().unwrap_or_default();
         let maximum_bombs =
             1 + player.power_ups.get(&PowerUp::SimultaneousBombs).copied().unwrap_or_default();
         if bomb_query.iter().filter(|Owner(o)| owner == o).count() < maximum_bombs as usize {
-            spawn_bomb(location, *owner, game_map, &textures, &mut commands);
+            spawn_bomb(location, *owner, range, game_map, &textures, &mut commands);
             any_bomb_spawned = true;
         } else {
             info!("Failed to spawn bomb: User is at maximum bomb count");
@@ -123,6 +125,7 @@ fn bomb_spawn_system(
 fn spawn_bomb(
     location: &TileLocation,
     owner: Entity,
+    range: u32,
     game_map: &GameMap,
     textures: &Textures,
     commands: &mut Commands,
@@ -131,7 +134,7 @@ fn spawn_bomb(
         .spawn()
         .insert(BombMarker)
         .insert(Owner(owner))
-        .insert(ExternalCrateComponent(Object::Bomb { fuse_remaining: BOMB_FUSE_LENGTH }))
+        .insert(ExternalCrateComponent(Object::Bomb { fuse_remaining: BOMB_FUSE_LENGTH, range }))
         .insert(*location)
         .insert_bundle(SpriteBundle {
             texture: textures.bomb.clone(),
@@ -154,7 +157,7 @@ fn fuse_remaining_system(
     for _ in ticks.iter().filter(|t| matches!(t, Tick::World)) {
         for (bomb, &location, mut object) in bomb_query.iter_mut() {
             let should_explode = match **object {
-                Object::Bomb { ref mut fuse_remaining } => {
+                Object::Bomb { ref mut fuse_remaining, .. } => {
                     fuse_remaining.0 = fuse_remaining.0.saturating_sub(1);
                     fuse_remaining.0 == 0
                 },
@@ -175,7 +178,7 @@ fn bomb_explosion_system(
         (&TileLocation, &ExternalCrateComponent<Object>),
         (Without<BombMarker>, Without<Player>),
     >,
-    bomb_query: Query<&Owner, With<BombMarker>>,
+    bomb_query: Query<&ExternalCrateComponent<Object>, With<BombMarker>>,
     player_query: Query<(&Player, &TileLocation, Entity, &PlayerName, &Score)>,
     mut kill_events: EventWriter<KillPlayerEvent>,
     game_map_query: Query<&GameMap>,
@@ -188,11 +191,12 @@ fn bomb_explosion_system(
 
     let mut any_bomb_exploded = false;
     for BombExplodeEvent { bomb, location } in exploded_bombs.iter() {
-        let owner = bomb_query.get(*bomb).expect("Invalid bomb entity");
-        let power = if let Ok((player, ..)) = player_query.get(owner.0) {
-            BASE_BOMB_POWER + player.power_ups.get(&PowerUp::BombRange).copied().unwrap_or_default()
+        let range = if let Object::Bomb { range, .. } =
+            **bomb_query.get(*bomb).expect("Invalid bomb entity")
+        {
+            range
         } else {
-            BASE_BOMB_POWER
+            panic!("Invalidly tagged object");
         };
         commands.entity(*bomb).despawn_recursive();
         commands
@@ -207,7 +211,7 @@ fn bomb_explosion_system(
                     &object_query,
                     &player_query,
                     &mut kill_events,
-                    power,
+                    range,
                     game_map,
                     &textures,
                 );
@@ -230,7 +234,7 @@ fn spawn_flames(
     >,
     player_query: &Query<(&Player, &TileLocation, Entity, &PlayerName, &Score)>,
     kill_events: &mut EventWriter<KillPlayerEvent>,
-    bomb_power: u32,
+    range: u32,
     game_map: &GameMap,
     textures: &Textures,
 ) {
@@ -239,7 +243,7 @@ fn spawn_flames(
 
     // Spawn flames in each direction.
     for direction in &Direction::all() {
-        for reach in 1..=(bomb_power as i32) {
+        for reach in 1..=(range as i32) {
             let location = *bomb_location + direction.extend(reach);
             let tile =
                 tile_query.iter().find_map(|(l, t)| if *l == location { Some(t) } else { None });

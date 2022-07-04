@@ -20,7 +20,7 @@ pub enum Tile {
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub enum Object {
-    Bomb { fuse_remaining: Ticks },
+    Bomb { fuse_remaining: Ticks, range: u32 },
     PowerUp(PowerUp),
     Crate,
 }
