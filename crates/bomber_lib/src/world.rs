@@ -29,7 +29,6 @@ pub enum Object {
 pub enum PowerUp {
     BombRange,
     SimultaneousBombs,
-    DashBoot,
 }
 
 impl Object {
