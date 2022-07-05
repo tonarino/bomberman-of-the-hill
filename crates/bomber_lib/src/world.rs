@@ -42,7 +42,7 @@ impl Object {
 }
 
 impl PowerUp {
-    pub const fn max(&self) -> u32 {
+    pub const fn max_count_per_player(&self) -> u32 {
         match self {
             PowerUp::BombRange => 5,
             PowerUp::SimultaneousBombs => 3,
