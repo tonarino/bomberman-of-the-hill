@@ -5,7 +5,9 @@ use bevy_egui::{
 };
 
 use crate::{
-    player_behaviour::{KillPlayerEvent, PlayerName, SpawnPlayerEvent},
+    object,
+    player_behaviour::{KillPlayerEvent, Player, PlayerName, SpawnPlayerEvent},
+    rendering::TILE_HEIGHT_PX,
     score::Score,
     state::{AppState, RoundTimer},
 };
@@ -28,15 +30,21 @@ impl Plugin for GameUiPlugin {
 
 fn score_panel_system(
     mut egui_context: ResMut<EguiContext>,
-    player_query: Query<(&PlayerName, &Score, Option<&DeadPlayerScore>)>,
+    player_query: Query<(&Player, &PlayerName, &Score, Option<&DeadPlayerScore>)>,
     round_timer_query: Query<&RoundTimer>,
+    textures: Res<object::Textures>,
 ) {
     let mut score_entries = player_query.iter().collect::<Vec<_>>();
     // Sort by descending score
-    score_entries.sort_by(|(_, Score(a), _), (_, Score(b), _)| b.cmp(a));
+    score_entries.sort_by(|(_, _, Score(a), _), (_, _, Score(b), _)| b.cmp(a));
     let timer = round_timer_query.single();
     let remaining = timer.0.duration() - timer.0.elapsed();
     let (minutes, seconds) = (remaining.as_secs() / 60, remaining.as_secs() % 60);
+
+    let bomb_range_power_up = egui_context.add_image(textures.bomb_range_power_up.clone_weak());
+    let simultaneous_bombs_power_up =
+        egui_context.add_image(textures.simultaneous_bombs_power_up.clone_weak());
+    let vision_range_power_up = egui_context.add_image(textures.vision_range_power_up.clone_weak());
 
     egui::SidePanel::left("Player Score").resizable(false).show(egui_context.ctx_mut(), |ui| {
         ui.vertical_centered_justified(|ui| {
@@ -46,20 +54,55 @@ fn score_panel_system(
             ui.separator();
             ui.heading(RichText::new("Player Score").strong());
             egui::Grid::new("Score Grid").striped(true).show(ui, |ui| {
-                for (PlayerName(name), score, dead_marker) in score_entries.iter() {
+                for (Player { power_ups, .. }, PlayerName(name), score, dead_marker) in
+                    score_entries.iter()
+                {
                     ui.colored_label(
                         if dead_marker.is_some() {
                             tonari_color::STRAWBERRY_LETTER_23
                         } else {
                             tonari_color::MIDNIGHT
                         },
-                        name,
+                        RichText::new(name).text_style(egui::TextStyle::Heading),
                     );
-                    ui.label(format!(
-                        "{}{}",
-                        score.0,
-                        if dead_marker.is_some() { " (Dead)" } else { "" }
-                    ));
+                    ui.label(
+                        RichText::new(format!(
+                            " {: >3}{}",
+                            score.0,
+                            if dead_marker.is_some() { " (Dead)" } else { " points " }
+                        ))
+                        .text_style(egui::TextStyle::Heading),
+                    );
+                    ui.end_row();
+                    ui.horizontal(|ui| {
+                        ui.image(bomb_range_power_up, egui::Vec2::splat(TILE_HEIGHT_PX / 2.0));
+                        ui.label(format!(
+                            "x{}",
+                            power_ups
+                                .get(&bomber_lib::world::PowerUp::BombRange)
+                                .copied()
+                                .unwrap_or_default()
+                        ));
+                        ui.image(
+                            simultaneous_bombs_power_up,
+                            egui::Vec2::splat(TILE_HEIGHT_PX / 2.0),
+                        );
+                        ui.label(format!(
+                            "x{}",
+                            power_ups
+                                .get(&bomber_lib::world::PowerUp::SimultaneousBombs)
+                                .copied()
+                                .unwrap_or_default()
+                        ));
+                        ui.image(vision_range_power_up, egui::Vec2::splat(TILE_HEIGHT_PX / 2.0));
+                        ui.label(format!(
+                            "x{}",
+                            power_ups
+                                .get(&bomber_lib::world::PowerUp::VisionRange)
+                                .copied()
+                                .unwrap_or_default()
+                        ));
+                    });
                     ui.end_row();
                 }
                 ui.allocate_space(ui.available_size());

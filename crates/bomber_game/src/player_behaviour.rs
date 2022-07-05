@@ -4,11 +4,11 @@
 use std::time::Duration;
 
 use anyhow::{anyhow, Result};
-use bevy::prelude::*;
+use bevy::{prelude::*, utils::HashMap};
 use bevy_tweening::{lens::TransformPositionLens, *};
 use bomber_lib::{
     wasm_act, wasm_name, wasm_team_name,
-    world::{Direction, Object, Ticks, Tile, TileOffset},
+    world::{Direction, Object, PowerUp, Ticks, Tile, TileOffset},
     Action, LastTurnResult,
 };
 use rand::{prelude::SliceRandom, thread_rng};
@@ -16,10 +16,10 @@ use wasmtime::Store;
 
 use crate::{
     animation::AnimationState,
-    bomb::SpawnBombEvent,
     game_map::{GameMap, PlayerSpawner, TileLocation},
     game_ui::tonari_color,
     log_recoverable_error, log_unrecoverable_error_and_panic,
+    object::SpawnBombEvent,
     player_hotswap::{PlayerHandle, PlayerHandles, WasmPlayerAsset},
     rendering::{
         PLAYER_HEIGHT_PX, PLAYER_VERTICAL_OFFSET_PX, PLAYER_WIDTH_PX, PLAYER_Z, SKELETON_HEIGHT_PX,
@@ -41,6 +41,7 @@ pub struct Player {
     // The wasm fuel is internally tracked by the store, but it can't be accessed
     // through the `wasmtime` API, so we keep a separate count associated to the player.
     total_fuel_consumed: u64,
+    pub power_ups: HashMap<PowerUp, u32>,
 }
 
 #[derive(Component, Clone, Debug)]
@@ -62,7 +63,7 @@ pub struct PlayerMovedEvent {
 pub struct Owner(pub Entity);
 
 /// How far player characters can see their surroundings
-const PLAYER_VIEW_TAXICAB_DISTANCE: u32 = 5;
+const BASE_PLAYER_VIEW_TAXICAB_DISTANCE: u32 = 4;
 
 /// Visual representation of a dead player
 #[derive(Component)]
@@ -243,7 +244,7 @@ fn spawn_player(
     spawn_event.send(SpawnPlayerEvent(PlayerName(name.clone())));
     commands
         .spawn()
-        .insert(Player { total_fuel_consumed: 0 })
+        .insert(Player { total_fuel_consumed: 0, power_ups: Default::default() })
         .insert(ExternalCrateComponent(instance))
         .insert(ExternalCrateComponent(store))
         .insert(location)
@@ -369,6 +370,7 @@ fn player_action_system(
                 &location,
                 &tile_query,
                 &object_query,
+                &player,
             ) {
                 Ok(action) => action,
                 Err(error) => {
@@ -614,12 +616,12 @@ fn move_player(
         .iter()
         .find_map(|(l, t)| (*l == target_location).then(|| t))
         .ok_or_else(|| anyhow!("No tile at target location ({})", player_name))?;
-    let objects_on_target_tile =
-        object_query.iter().filter(|(l, _)| (*l == &target_location)).count();
+    let solid_objects_on_tile =
+        object_query.iter().filter(|(l, o)| (*l == &target_location && o.is_solid())).count();
     let players_on_target_tile = player_locations.filter(|l| *l == target_location).count();
 
     match **target_tile {
-        Tile::Floor | Tile::Hill if objects_on_target_tile + players_on_target_tile == 0 => {
+        Tile::Floor | Tile::Hill if solid_objects_on_tile + players_on_target_tile == 0 => {
             info!("{} moves to {:?}", player_name, target_location);
             event_writer.send(PlayerMovedEvent {
                 entity: player_entity,
@@ -646,14 +648,17 @@ fn wasm_player_action(
         (&TileLocation, &ExternalCrateComponent<Object>),
         (Without<Player>, Without<ExternalCrateComponent<Tile>>),
     >,
+    player: &Player,
 ) -> Result<Action> {
     let last_result = LastTurnResult::StoodStill; // TODO close the LastTurnResult loop.
+    let view_distance = BASE_PLAYER_VIEW_TAXICAB_DISTANCE
+        + player.power_ups.get(&PowerUp::VisionRange).copied().unwrap_or_default();
     let player_surroundings: Vec<(Tile, Option<Object>, TileOffset)> = tile_query
         .iter()
         .filter_map(|(location, tile)| {
             let object_on_tile =
                 object_query.iter().find_map(|(l, o)| (l == location).then(|| &*o));
-            ((*location - *player_location).taxicab_distance() <= PLAYER_VIEW_TAXICAB_DISTANCE)
+            ((*location - *player_location).taxicab_distance() <= view_distance)
                 .then(|| (**tile, object_on_tile.map(|o| **o), (*location - *player_location)))
         })
         .collect();
