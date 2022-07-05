@@ -125,10 +125,6 @@ pub mod tonari_color {
         }
     }
 
-    pub fn all_bevy() -> impl Iterator<Item = Color> {
-        all().map(Color32::to_bevy_color)
-    }
-
     // Pastel-ish colors that work well when multiplied by the sprite
     pub fn team_colors_bevy() -> impl Iterator<Item = Color> {
         [
@@ -149,35 +145,6 @@ pub mod tonari_color {
         .map(Color32::to_bevy_color)
     }
 
-    pub fn all() -> impl Iterator<Item = Color32> {
-        [
-            BLUE_MOON,
-            GREEN_DAY,
-            THE_WHITE_STRIPES,
-            RECYCLED_AIR,
-            CHROMEO,
-            DEEP_PURPLE,
-            LOVE,
-            RED_HOT_CHILI_PEPPERS,
-            STRAWBERRY_LETTER_23,
-            DJ_MUSTARD,
-            YELLOW_SUBMARINE,
-            LITTLE_DRAGON,
-            MY_LIFE_IS_SO_BLUE,
-            PURPLE_RAIN,
-            PINK_FLOYD,
-            YOSHIMI_BATTLES_THE_PINK_ROBOTS,
-            O_SOLE_MIO,
-            MINT_CONDITION,
-            LILAC_WINE,
-            RUSTIE,
-            JAMES_BROWN,
-            ANOTHER_GREEN_WORLD,
-            MIDNIGHT,
-            PURE_SHORES,
-        ]
-        .into_iter()
-    }
     use super::egui::Color32;
     pub const BLUE_MOON: Color32 = Color32::from_rgb(50, 108, 242);
     pub const GREEN_DAY: Color32 = Color32::from_rgb(38, 201, 140);

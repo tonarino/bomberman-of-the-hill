@@ -48,6 +48,7 @@ pub struct Team {
     name: String,
     color: Color,
 }
+
 pub struct KillPlayerEvent(pub Entity, pub PlayerName, pub Score);
 pub struct SpawnPlayerEvent(pub PlayerName);
 pub struct PlayerMovedEvent {
