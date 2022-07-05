@@ -1,7 +1,7 @@
 use bomber_lib::{
     self,
-    world::{Object, Tile},
-    Action, LastTurnResult, Player,
+    world::{Enemy, Object, Tile},
+    Action, Player,
 };
 use bomber_macro::wasm_export;
 
@@ -13,8 +13,7 @@ impl Player for Cheater {
     #[allow(clippy::empty_loop)]
     fn act(
         &mut self,
-        _surroundings: Vec<(Tile, Option<Object>, bomber_lib::world::TileOffset)>,
-        _last_result: LastTurnResult,
+        _surroundings: Vec<(Tile, Option<Object>, Option<Enemy>, bomber_lib::world::TileOffset)>,
     ) -> Action {
         // A cheater just tries to break everything.
         loop {}

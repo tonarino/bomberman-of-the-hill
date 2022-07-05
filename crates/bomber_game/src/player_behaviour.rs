@@ -1,3 +1,5 @@
+// Warranted since bevy queries tend to have very complex types.
+#![allow(clippy::type_complexity)]
 //! Defines a Bevy plugin that governs spawning and despawning players from .wasm handles,
 //! as well as the continuous behaviour of players as they exist in the game world.
 
@@ -8,8 +10,8 @@ use bevy::{prelude::*, utils::HashMap};
 use bevy_tweening::{lens::TransformPositionLens, *};
 use bomber_lib::{
     wasm_act, wasm_name, wasm_team_name,
-    world::{Direction, Object, PowerUp, Ticks, Tile, TileOffset},
-    Action, LastTurnResult,
+    world::{Direction, Enemy, Object, PowerUp, Ticks, Tile, TileOffset},
+    Action,
 };
 use rand::{prelude::SliceRandom, thread_rng};
 use wasmtime::Store;
@@ -359,6 +361,8 @@ fn player_action_system(
         &mut ExternalCrateComponent<wasmtime::Store<()>>,
         &ExternalCrateComponent<wasmtime::Instance>,
         &PlayerName,
+        &Team,
+        &Score,
         &mut Player,
         &Handle<WasmPlayerAsset>,
     )>,
@@ -376,6 +380,12 @@ fn player_action_system(
     mut event_writer: EventWriter<PlayerMovedEvent>,
 ) -> Result<()> {
     let locations = player_query.iter().map(|(_, l, ..)| *l).collect::<Vec<_>>();
+    let potential_enemies = player_query
+        .iter()
+        .map(|(_, l, _, _, _, n, t, s, _, _)| {
+            (Enemy { name: n.0.clone(), team_name: t.name.clone(), score: s.0 }, *l)
+        })
+        .collect::<Vec<_>>();
     for _ in ticks.iter().filter(|t| matches!(t, Tick::Player)) {
         for (
             player_entity,
@@ -384,16 +394,24 @@ fn player_action_system(
             mut store,
             instance,
             player_name,
+            _,
+            _,
             mut player,
             handle_inner,
         ) in player_query.iter_mut()
         {
+            let enemies = potential_enemies
+                .iter()
+                .filter(|(_, l)| *l != *location)
+                .cloned()
+                .collect::<Vec<_>>();
             let action = match wasm_player_action(
                 &mut store,
                 instance,
                 &location,
                 &tile_query,
                 &object_query,
+                &enemies,
                 &player,
             ) {
                 Ok(action) => action,
@@ -694,21 +712,28 @@ fn wasm_player_action(
         (&TileLocation, &ExternalCrateComponent<Object>),
         (Without<Player>, Without<ExternalCrateComponent<Tile>>),
     >,
+    enemies: &[(Enemy, TileLocation)],
     player: &Player,
 ) -> Result<Action> {
-    let last_result = LastTurnResult::StoodStill; // TODO close the LastTurnResult loop.
     let view_distance = BASE_PLAYER_VIEW_TAXICAB_DISTANCE
         + player.power_ups.get(&PowerUp::VisionRange).copied().unwrap_or_default();
-    let player_surroundings: Vec<(Tile, Option<Object>, TileOffset)> = tile_query
+    let player_surroundings: Vec<(Tile, Option<Object>, Option<Enemy>, TileOffset)> = tile_query
         .iter()
         .filter_map(|(location, tile)| {
             let object_on_tile =
-                object_query.iter().find_map(|(l, o)| (l == location).then(|| &*o));
-            ((*location - *player_location).taxicab_distance() <= view_distance)
-                .then(|| (**tile, object_on_tile.map(|o| **o), (*location - *player_location)))
+                object_query.iter().find_map(|(l, o)| (l == location).then_some(&*o));
+            let enemy_on_tile = enemies.iter().find_map(|(e, l)| (l == location).then_some(e));
+            ((*location - *player_location).taxicab_distance() <= view_distance).then(|| {
+                (
+                    **tile,
+                    object_on_tile.map(|o| **o),
+                    enemy_on_tile.cloned(),
+                    (*location - *player_location),
+                )
+            })
         })
         .collect();
-    wasm_act(store, instance, player_surroundings, last_result)
+    wasm_act(store, instance, player_surroundings)
 }
 
 fn cleanup(player_query: Query<Entity, With<Player>>, mut commands: Commands) {
