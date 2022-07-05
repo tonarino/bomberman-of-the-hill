@@ -306,7 +306,7 @@ fn spawn_player_text(
     });
     parent.spawn().insert_bundle(Text2dBundle {
         text: Text::with_section(
-            format!("Team {}", team.name.clone()),
+            &team.name,
             TextStyle {
                 font: asset_server.load("fonts/space_mono_400.ttf"),
                 font_size: 16.0,
