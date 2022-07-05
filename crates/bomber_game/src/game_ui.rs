@@ -108,6 +108,43 @@ fn configure_visuals(mut egui_ctx: ResMut<EguiContext>) {
 
 #[allow(unused)]
 pub mod tonari_color {
+    use bevy::prelude::*;
+
+    trait EguiColorExt {
+        fn to_bevy_color(self) -> Color;
+    }
+
+    impl EguiColorExt for Color32 {
+        fn to_bevy_color(self) -> Color {
+            Color::Rgba {
+                red: self[0] as f32 / 255.0,
+                green: self[1] as f32 / 255.0,
+                blue: self[2] as f32 / 255.0,
+                alpha: self[3] as f32 / 255.0,
+            }
+        }
+    }
+
+    // Pastel-ish colors that work well when multiplied by the sprite
+    pub fn team_colors_bevy() -> impl Iterator<Item = Color> {
+        [
+            CHROMEO,
+            RED_HOT_CHILI_PEPPERS,
+            YELLOW_SUBMARINE,
+            LITTLE_DRAGON,
+            PINK_FLOYD,
+            YOSHIMI_BATTLES_THE_PINK_ROBOTS,
+            O_SOLE_MIO,
+            MINT_CONDITION,
+            LILAC_WINE,
+            RUSTIE,
+            ANOTHER_GREEN_WORLD,
+            PURE_SHORES,
+        ]
+        .into_iter()
+        .map(Color32::to_bevy_color)
+    }
+
     use super::egui::Color32;
     pub const BLUE_MOON: Color32 = Color32::from_rgb(50, 108, 242);
     pub const GREEN_DAY: Color32 = Color32::from_rgb(38, 201, 140);
