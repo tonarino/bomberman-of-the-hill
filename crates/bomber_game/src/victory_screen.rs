@@ -3,7 +3,7 @@ use bevy::prelude::*;
 
 use crate::{
     log_unrecoverable_error_and_panic,
-    player_behaviour::PlayerName,
+    player_behaviour::{PlayerName, Team},
     rendering::{PLAYER_HEIGHT_PX, PLAYER_WIDTH_PX, VICTORY_SCREEN_ITEMS_Z, VICTORY_SCREEN_Z},
     score::Score,
     state::{AppState, RoundTimer},
@@ -39,7 +39,9 @@ impl Plugin for VictoryScreenPlugin {
 }
 
 fn setup(
-    player_query: Query<(&PlayerName, &Score, &Handle<Image>)>,
+    player_query: Query<(&PlayerName, &Score, &Team)>,
+    asset_server: Res<AssetServer>,
+    mut texture_atlases: ResMut<Assets<TextureAtlas>>,
     fonts: Res<Fonts>,
     windows: Res<Windows>,
     mut commands: Commands,
@@ -60,34 +62,42 @@ fn setup(
             ..Default::default()
         })
         .with_children(|parent| {
-            spawn_podium(parent, player_query, &fonts);
+            spawn_podium(parent, player_query, &asset_server, &mut texture_atlases, &fonts);
             spawn_countdown_text(parent, &fonts);
         });
 }
 
 fn spawn_podium(
     parent: &mut ChildBuilder,
-    player_query: Query<(&PlayerName, &Score, &Handle<Image>)>,
+    player_query: Query<(&PlayerName, &Score, &Team)>,
+    asset_server: &AssetServer,
+    texture_atlases: &mut Assets<TextureAtlas>,
     fonts: &Fonts,
 ) {
     // TODO(ryo): Handle a tie.
     let no1_player = player_query.iter().max_by_key(|(_, Score(point), _)| point);
-    if let Some((PlayerName(name), Score(score), material)) = no1_player {
+    if let Some((PlayerName(name), Score(score), team)) = no1_player {
         parent.spawn().insert_bundle(Text2dBundle {
-            text: mono_text(&format!("#1 {}", name), 60.0, fonts),
+            text: mono_text(&format!("#1 {} from team {}", name, team.name), 60.0, fonts),
             transform: Transform::from_translation(Vec3::new(0.0, 80.0, VICTORY_SCREEN_ITEMS_Z)),
             ..Default::default()
         });
 
+        let texture_handle = asset_server.load("graphics/Sprites/Bomberman/sheet.png");
+        let texture_atlas = TextureAtlas::from_grid(texture_handle, Vec2::new(21.0, 32.0), 5, 4);
+        let texture_atlas_handle = texture_atlases.add(texture_atlas);
+
         // The player avatar doubled in size.
-        parent.spawn().insert_bundle(SpriteBundle {
-            texture: material.clone(),
-            transform: Transform::from_translation(Vec3::new(0.0, 0.0, VICTORY_SCREEN_ITEMS_Z)),
-            sprite: Sprite {
+        parent.spawn().insert_bundle(SpriteSheetBundle {
+            sprite: TextureAtlasSprite {
+                index: 2,
+                color: team.color,
                 custom_size: Some(Vec2::new(PLAYER_WIDTH_PX, PLAYER_HEIGHT_PX) * 2.0),
                 ..Default::default()
             },
-            ..Default::default()
+            texture_atlas: texture_atlas_handle,
+            transform: Transform::from_translation(Vec3::new(0.0, 0.0, VICTORY_SCREEN_ITEMS_Z)),
+            ..default()
         });
 
         parent.spawn().insert_bundle(Text2dBundle {
