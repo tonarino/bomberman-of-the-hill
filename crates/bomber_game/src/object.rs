@@ -345,7 +345,7 @@ fn spawn_power_up(
             texture: match power_up {
                 PowerUp::BombRange => textures.bomb_range_power_up.clone(),
                 PowerUp::SimultaneousBombs => textures.simultaneous_bombs_power_up.clone(),
-                PowerUp::VisionRange => todo!(),
+                PowerUp::VisionRange => textures.vision_range_power_up.clone(),
             },
             transform: Transform::from_translation(
                 location.as_world_coordinates(game_map).extend(GAME_OBJECT_Z),
