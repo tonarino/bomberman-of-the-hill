@@ -13,8 +13,7 @@ use crate::{
 };
 
 /// comfortable for 8 players, many starting crates, open hill in the center.
-pub const CRATE_HEAVY_CROSS_ARENA_SMALL: &str =
-    include_str!("../assets/maps/crate_heavy_cross_arena_small.txt");
+pub const CRATE_HEAVY_CROSS_ARENA_SMALL: &str = include_str!("../assets/maps/castle.txt");
 
 /// Activating this plugin automatically spawns a game map on startup.
 pub struct GameMapPlugin;
@@ -91,7 +90,7 @@ impl GameMap {
         commands.spawn().insert(game_map).insert_bundle(SpriteBundle::default()).with_children(
             |parent| {
                 for (i, j, c) in indexed_characters {
-                    let location = TileLocation(i, j);
+                    let location = TileLocation(j, i);
                     Self::spawn_game_elements_from_character(
                         parent, &game_map, location, c, textures,
                     )
