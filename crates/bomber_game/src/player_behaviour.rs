@@ -49,8 +49,8 @@ pub struct Player {
 
 #[derive(Component, Clone, Debug)]
 pub struct Team {
-    name: String,
-    color: Color,
+    pub name: String,
+    pub color: Color,
 }
 
 pub struct KillPlayerEvent(pub Entity, pub PlayerName, pub Score);

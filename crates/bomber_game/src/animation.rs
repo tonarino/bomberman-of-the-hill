@@ -3,7 +3,7 @@ use std::time::Duration;
 use bevy::prelude::*;
 use bomber_lib::world;
 
-use crate::tick::WHOLE_TURN_PERIOD;
+use crate::{state::AppState, tick::WHOLE_TURN_PERIOD};
 
 pub struct AnimationPlugin;
 pub struct AnimationTimer(Timer);
@@ -41,7 +41,9 @@ impl AnimationState {
 
 impl Plugin for AnimationPlugin {
     fn build(&self, app: &mut App) {
-        app.add_system(animate_bomberman_system);
+        app.add_system_set(
+            SystemSet::on_update(AppState::InGame).with_system(animate_bomberman_system),
+        );
         app.insert_resource(AnimationTimer(Timer::new(animation_period(), true)));
     }
 }
