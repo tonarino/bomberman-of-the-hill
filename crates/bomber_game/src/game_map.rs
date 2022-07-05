@@ -12,8 +12,19 @@ use crate::{
     ExternalCrateComponent,
 };
 
+struct MapIndex(usize);
+
+impl FromWorld for MapIndex {
+    fn from_world(_: &mut World) -> Self {
+        Self(0)
+    }
+}
+
 /// comfortable for 8 players, many starting crates, open hill in the center.
-pub const CRATE_HEAVY_CROSS_ARENA_SMALL: &str = include_str!("../assets/maps/castle.txt");
+pub const CRATE_HEAVY_CROSS_ARENA_SMALL: &str =
+    include_str!("../assets/maps/crate_heavy_cross_arena_small.txt");
+/// comfortable for 8 players, find your way into the castle.
+pub const CASTLE: &str = include_str!("../assets/maps/castle.txt");
 
 /// Activating this plugin automatically spawns a game map on startup.
 pub struct GameMapPlugin;
@@ -58,8 +69,23 @@ impl Plugin for GameMapPlugin {
     }
 }
 
-fn setup(mut commands: Commands, textures: Res<Textures>) -> Result<()> {
-    GameMap::spawn_from_text(&mut commands, CRATE_HEAVY_CROSS_ARENA_SMALL, &textures)
+fn setup(
+    mut commands: Commands,
+    textures: Res<Textures>,
+    mut next_map: Local<MapIndex>,
+) -> Result<()> {
+    match *next_map {
+        MapIndex(0) => {
+            GameMap::spawn_from_text(&mut commands, CRATE_HEAVY_CROSS_ARENA_SMALL, &textures)?;
+            next_map.0 = 1;
+        },
+        MapIndex(1) => {
+            GameMap::spawn_from_text(&mut commands, CASTLE, &textures)?;
+            next_map.0 = 0;
+        },
+        _ => return Err(anyhow!("Invalid map index")),
+    }
+    Ok(())
 }
 
 fn cleanup(game_map_query: Query<Entity, With<GameMap>>, mut commands: Commands) -> Result<()> {
