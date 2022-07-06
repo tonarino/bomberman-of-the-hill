@@ -41,7 +41,7 @@ pub fn init_api_keys(key_count: usize) -> Result<Vec<String>, Error> {
             );
             let mut random_generator = rand::thread_rng();
             while keys.len() < key_count {
-                let random: u32 = random_generator.gen();
+                let random: u64 = random_generator.gen();
                 keys.push(format!("{:x}", random));
             }
 
