@@ -1,3 +1,5 @@
+#![warn(clippy::all)]
+
 use crate::{api_keys::init_api_keys, upload_handler::handler};
 use anyhow::{Context, Error};
 use log::*;
