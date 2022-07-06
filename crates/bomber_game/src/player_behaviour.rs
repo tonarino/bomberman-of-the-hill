@@ -1,5 +1,3 @@
-// Warranted since bevy queries tend to have very complex types.
-#![allow(clippy::type_complexity)]
 //! Defines a Bevy plugin that governs spawning and despawning players from .wasm handles,
 //! as well as the continuous behaviour of players as they exist in the game world.
 
