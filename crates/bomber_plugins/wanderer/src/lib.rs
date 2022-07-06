@@ -2,8 +2,8 @@ use std::convert::TryFrom;
 
 use bomber_lib::{
     self,
-    world::{Direction, Object, Tile},
-    Action, LastTurnResult, Player,
+    world::{Direction, Enemy, Object, Tile},
+    Action, Player,
 };
 use bomber_macro::wasm_export;
 
@@ -24,8 +24,7 @@ impl Default for Wanderer {
 impl Player for Wanderer {
     fn act(
         &mut self,
-        surroundings: Vec<(Tile, Option<Object>, bomber_lib::world::TileOffset)>,
-        _last_result: LastTurnResult,
+        surroundings: Vec<(Tile, Option<Object>, Option<Enemy>, bomber_lib::world::TileOffset)>,
     ) -> Action {
         // Drops a bomb every once in a while.
         if self.bomb_ticks >= 3 {
@@ -36,7 +35,7 @@ impl Player for Wanderer {
 
         // A wanderer walks to their preferred direction if it's free.
         // If it isn't, they  walk to the first free tile they inspect.
-        let preferred_tile = surroundings.iter().find_map(|(t, o, p)| {
+        let preferred_tile = surroundings.iter().find_map(|(t, o, _, p)| {
             (o.is_none() && (*p == self.preferred_direction.extend(1))).then(|| t)
         });
         if matches!(preferred_tile, Some(Tile::Floor)) {
@@ -44,8 +43,8 @@ impl Player for Wanderer {
         } else {
             surroundings
                 .iter()
-                .filter(|(t, o, p)| o.is_none() && p.is_adjacent() && matches!(t, Tile::Floor))
-                .find_map(|(_, _, p)| Direction::try_from(*p).map(Action::Move).ok())
+                .filter(|(t, o, _, p)| o.is_none() && p.is_adjacent() && matches!(t, Tile::Floor))
+                .find_map(|(_, _, _, p)| Direction::try_from(*p).map(Action::Move).ok())
                 .unwrap_or(Action::StayStill)
         }
     }

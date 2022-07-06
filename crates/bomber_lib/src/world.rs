@@ -13,22 +13,46 @@ pub enum Direction {
 
 #[derive(EnumIter, Copy, Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub enum Tile {
+    /// Impassable terrain that cannot be blown up with bombs.
     Wall,
+    /// Walkable terrain.
     Floor,
+    /// Stand on this terrain to gain victory points!
     Hill,
 }
 
+/// Anything that can be found on top of a tile, other than a player.
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub enum Object {
-    Bomb { fuse_remaining: Ticks, range: u32 },
+    /// A ticking bomb placed by a player.
+    Bomb {
+        /// How many turns are left until it explodes.
+        fuse_remaining: Ticks,
+        /// How many tiles it can reach when it explodes.
+        range: u32,
+    },
+    /// An item that improves one of your abilities.
     PowerUp(PowerUp),
+    /// An explodable crate. Will stop the progress of bomb explosions,
+    /// and it may contain powerups!
     Crate,
+}
+
+/// A rival player.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct Enemy {
+    pub name: String,
+    pub team_name: String,
+    pub score: u32,
 }
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Serialize, Deserialize, Hash)]
 pub enum PowerUp {
+    /// Each increases the range of your bomb explosions by one.
     BombRange,
+    /// Each increases the number of ticking bombs you can place on the world at once.
     SimultaneousBombs,
+    /// Each increases the distance that your character can see every turn.
     VisionRange,
 }
 
@@ -55,9 +79,7 @@ impl PowerUp {
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Serialize, Deserialize)]
 pub struct Ticks(pub u32);
 
-/// Position relative to something (typically the player, as this type is used
-/// to tell the player where tiles are respective to them, without leaking the
-/// map layout).
+/// Position relative to something (typically you),
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct TileOffset(pub i32, pub i32);
 
@@ -105,9 +127,8 @@ impl std::ops::Add for TileOffset {
     }
 }
 
-/// Quality of life conversion for the player to simplify their navigation logic.
+/// Quality of life conversion.
 impl TryFrom<TileOffset> for Direction {
-    // TODO proper error return
     type Error = ();
 
     fn try_from(p: TileOffset) -> Result<Self, ()> {

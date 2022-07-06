@@ -1,5 +1,5 @@
 # Bevy queries are usually above the default threshold of 250, yet it is not idiomatic to type-alias them.
-type-complexity-threshold = 500
+type-complexity-threshold = 1000
 
 # Bevy systems often have more than 7 arguments.
 too-many-arguments-threshold = 12
