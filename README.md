@@ -16,7 +16,7 @@ or
 This will generate `.wasm` files under `target/wasm32-unknown-unknown/release/`
 
 * Launch the runner with `cargo run --release -p bomber_game`
-* Drop either of the `wasm` files you generated in step 1 in `crates/bomber_game/assets/players`
+* Drop either of the `wasm` files you generated in step 1 in `rounds/1/`
 * Watch the bombers go!
 
 ## Running and submitting to upload server
