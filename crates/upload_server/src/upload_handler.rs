@@ -1,10 +1,21 @@
-use anyhow::{Context, Error};
+use anyhow::{anyhow, bail, Context, Error};
 use log::*;
 use rand::Rng;
 use rouille::{Request, Response};
-use std::{fs, io::Read, path::Path};
+use std::{
+    ffi::OsStr,
+    fs::{self, create_dir_all},
+    io::Read,
+    path::{Path, PathBuf},
+};
 
-const ROUNDS_FOLDER: &str = "rounds/1";
+const ROUNDS_FOLDER: &str = "rounds";
+/// Max number of rounds the upload server will attempt to create.
+const MAX_ROUNDS: usize = 10_000;
+/// Maximum number of players in a round before upload server starts putting them into text ine.
+const MAX_PLAYERS_PER_ROUND: usize = 12;
+/// Name of the file that the game engine uses to mark a finished round.
+const FINISHED_ROUND_MARKER_FILENAME: &str = "round-finished.marker";
 
 const MAX_WASM_SIZE: usize = 10_000_000;
 const WASM_FILE_PREFIX: &[u8] = b"\0asm";
@@ -47,7 +58,9 @@ pub fn handler(request: &Request, api_keys: &[String]) -> Response {
             return text_response("Uploaded data not a WASM file.\n").with_status_code(BAD_REQUEST);
         }
         match handle_upload(api_key, &data) {
-            Ok(()) => text_response("Your submission has been accepted.\n"),
+            Ok(round_number) => text_response(format!(
+                "Your submission has been accepted to round {round_number}.\n"
+            )),
             Err(e) => text_response(format!("Error accepting your submission: {:#}\n", e))
                 .with_status_code(INTERNAL_SERVER_ERROR),
         }
@@ -56,8 +69,9 @@ pub fn handler(request: &Request, api_keys: &[String]) -> Response {
     }
 }
 
-fn handle_upload(api_key: &str, data: &[u8]) -> Result<(), Error> {
-    let path = Path::new(ROUNDS_FOLDER).join(format!("{}.wasm", api_key));
+fn handle_upload(api_key: &str, data: &[u8]) -> Result<usize, Error> {
+    let filename = format!("{}.wasm", api_key);
+    let (round_number, path) = get_upload_round_and_path_for(&filename)?;
 
     let random: u32 = rand::thread_rng().gen();
     let temp_path = path.with_extension(format!("wasm.tmp{}", random));
@@ -66,7 +80,56 @@ fn handle_upload(api_key: &str, data: &[u8]) -> Result<(), Error> {
     fs::write(&temp_path, data).with_context(|| format!("writing {:?}", temp_path))?;
     fs::rename(&temp_path, &path)?;
     info!("{:?} saved.", path);
-    Ok(())
+    Ok(round_number)
+}
+
+/// Return a path to upload `filename` player to, creating folders as necessary.
+fn get_upload_round_and_path_for(filename: &str) -> Result<(usize, PathBuf), Error> {
+    let rounds_path = Path::new(ROUNDS_FOLDER);
+    if !rounds_path.is_dir() {
+        bail!("{:?} must be a directory.", rounds_path);
+    }
+
+    for round in 1..MAX_ROUNDS {
+        let round_path = rounds_path.join(round.to_string());
+
+        // Skip finished rounds.
+        if round_path.join(FINISHED_ROUND_MARKER_FILENAME).exists() {
+            continue;
+        }
+
+        let player_in_round_path = round_path.join(filename);
+
+        // If this player is already in some non-past round, overwrite it.
+        if player_in_round_path.exists() {
+            return Ok((round, player_in_round_path));
+        }
+
+        // The round folder may not exist, ensure it does.
+        create_dir_all(&round_path)?;
+
+        // Skip full rounds.
+        if count_players_in_dir(&round_path)? >= MAX_PLAYERS_PER_ROUND {
+            continue;
+        }
+
+        return Ok((round, player_in_round_path));
+    }
+
+    Err(anyhow!("Didn't found a round to put player to."))
+}
+
+fn count_players_in_dir(path: &Path) -> Result<usize, Error> {
+    let wasm_extension = OsStr::new("wasm");
+
+    let mut count = 0;
+    for file in path.read_dir().context(format!("reading {path:?}"))? {
+        let path = file?.path();
+        if path.is_file() && path.extension() == Some(wasm_extension) {
+            count += 1;
+        }
+    }
+    Ok(count)
 }
 
 /// Create a text response and log it. Work-around for the fact that response body can be read only
