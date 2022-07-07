@@ -4,7 +4,7 @@ use rand::Rng;
 use rouille::{Request, Response};
 use std::{fs, io::Read, path::Path};
 
-const PLAYERS_DIRECTORY: &str = "crates/bomber_game/assets/players";
+const ROUNDS_FOLDER: &str = "rounds/1";
 
 const MAX_WASM_SIZE: usize = 10_000_000;
 const WASM_FILE_PREFIX: &[u8] = b"\0asm";
@@ -58,7 +58,7 @@ pub fn handler(request: &Request, api_keys: &[String]) -> Response {
 }
 
 fn handle_upload(api_key: &str, data: &[u8]) -> Result<(), Error> {
-    let path = Path::new(PLAYERS_DIRECTORY).join(format!("{}.wasm", api_key));
+    let path = Path::new(ROUNDS_FOLDER).join(format!("{}.wasm", api_key));
 
     let random: u32 = rand::thread_rng().gen();
     let temp_path = path.with_extension(format!("wasm.tmp{}", random));
