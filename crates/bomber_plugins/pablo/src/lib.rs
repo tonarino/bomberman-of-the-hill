@@ -1,12 +1,15 @@
 use anyhow::{anyhow, Result};
 use std::cmp::{max, min};
+use tile_utils::weighted_center;
 
 use bomber_lib::{
     self,
-    world::{Direction, Enemy, Object, Ticks, Tile, TileOffset},
+    world::{Enemy, Object, Ticks, Tile, TileOffset},
     Action, Player,
 };
 use bomber_macro::wasm_export;
+
+mod tile_utils;
 
 type FullTile = (Tile, Option<Object>, Option<Enemy>, TileOffset);
 type Bomb = (Ticks, u32, TileOffset);
@@ -24,6 +27,7 @@ fn bombs(surroundings: &[FullTile]) -> Vec<Bomb> {
         })
         .collect()
 }
+
 fn empty_tiles(surroundings: &[FullTile]) -> Vec<TileOffset> {
     surroundings.iter()
         // Filter out any tiles with solid objects
@@ -120,15 +124,11 @@ impl Player for Bomber {
         &mut self,
         surroundings: Vec<(Tile, Option<Object>, Option<Enemy>, TileOffset)>,
     ) -> Action {
-        let powerups = surroundings.iter().filter_map(|(_, obj, _, offset)| {
-            matches!(obj, Some(Object::PowerUp(_))).then_some(offset)
-        });
-        let hill = surroundings
-            .iter()
-            .filter_map(|(t, _, _, offset)| matches!(t, Tile::Hill).then_some(offset));
-
-        let preferred_direction = hill.chain(powerups.iter()).chain(Direction::all);
         let safe_tiles = safe_subset(&surroundings);
+        let hill_center = weighted_center(
+            surroundings.iter().filter_map(|(t, _, _, o)| matches!(t, Tile::Hill).then_some(*o)),
+        );
+        todo!()
     }
 
     fn name(&self) -> String {
