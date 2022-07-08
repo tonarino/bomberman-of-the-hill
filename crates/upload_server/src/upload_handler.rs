@@ -116,7 +116,7 @@ fn get_upload_round_and_path_for(filename: &str) -> Result<(usize, PathBuf), Err
         return Ok((round, player_in_round_path));
     }
 
-    Err(anyhow!("Didn't found a round to put player to."))
+    Err(anyhow!("Couldn't find a round to add player to."))
 }
 
 fn count_players_in_dir(path: &Path) -> Result<usize, Error> {
