@@ -12,8 +12,8 @@ use std::{
 const ROUNDS_FOLDER: &str = "rounds";
 /// Max number of rounds the upload server will attempt to create.
 const MAX_ROUNDS: usize = 10_000;
-/// Maximum number of players in a round before upload server starts putting them into text ine.
-const MAX_PLAYERS_PER_ROUND: usize = 12;
+/// Maximum number of players in a round before upload server starts putting them into next one.
+const MAX_PLAYERS_PER_ROUND: usize = 8;
 /// Name of the file that the game engine uses to mark a finished round.
 const FINISHED_ROUND_MARKER_FILENAME: &str = "round-finished.marker";
 

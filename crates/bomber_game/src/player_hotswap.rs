@@ -9,6 +9,7 @@ use bomber_lib::world::Ticks;
 use crate::state::Round;
 
 pub struct PlayerHotswapPlugin;
+pub const MAX_PLAYERS: usize = 8;
 
 /// Handle into a .wasm file, classified by whether or not it misbehaved.
 #[derive(Clone, Debug)]
@@ -92,4 +93,5 @@ fn hotswap_system(
     // Add any handles that aren't already present and misbehaving
     new_handles.retain(|h| handles.0.iter().all(|old| old.inner().id != h.id));
     handles.0.extend(new_handles.into_iter().map(|new| PlayerHandle::ReadyToSpawn(new.typed())));
+    handles.0.truncate(MAX_PLAYERS);
 }
