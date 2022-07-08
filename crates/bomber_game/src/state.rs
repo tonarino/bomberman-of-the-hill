@@ -1,8 +1,12 @@
 //! Defines a Bevy plugin that manages transitions between the game states.
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use bevy::prelude::*;
-use std::{path::Path, time::Duration};
+use std::{
+    fs::{self, create_dir_all},
+    path::Path,
+    time::Duration,
+};
 
 use crate::log_unrecoverable_error_and_panic;
 
@@ -32,11 +36,14 @@ impl Plugin for AppStatePlugin {
     fn build(&self, app: &mut App) {
         let first_round = (1..MAX_ROUNDS)
             .find(|r| {
-                let rounds_path = Path::new(ROUNDS_FOLDER);
-                let round_path = rounds_path.join(r.to_string());
-                !round_path.join(FINISHED_ROUND_MARKER_FILENAME).exists()
+                !Path::new(ROUNDS_FOLDER)
+                    .join(r.to_string())
+                    .join(FINISHED_ROUND_MARKER_FILENAME)
+                    .exists()
             })
             .expect("All possible round slots are full");
+        create_dir_all(Path::new(ROUNDS_FOLDER).join(first_round.to_string()))
+            .expect("Failed to create round folder");
 
         app.add_startup_system(setup)
             .insert_resource(Round(first_round))
@@ -63,7 +70,15 @@ fn app_state_system(
         let (next_state, next_duration) = match app_state.current() {
             AppState::InGame => (AppState::VictoryScreen, VICTORY_SCREEN_DURATION),
             AppState::VictoryScreen => {
+                let finished_round_path = Path::new(ROUNDS_FOLDER)
+                    .join(round.0.to_string())
+                    .join(FINISHED_ROUND_MARKER_FILENAME);
+
+                fs::write(&finished_round_path, &[])
+                    .with_context(|| format!("writing {:?}", finished_round_path))?;
                 round.0 += 1;
+                create_dir_all(Path::new(ROUNDS_FOLDER).join(round.0.to_string()))
+                    .expect("Failed to create round folder");
                 (AppState::InGame, GAME_DURATION)
             },
         };
