@@ -1,6 +1,6 @@
 use anyhow::{anyhow, Result};
 use std::cmp::{max, min};
-use tile_utils::weighted_center;
+use tile_utils::{closest_to, main_direction, pathfind, weighted_center, TileOffsetExt};
 
 use bomber_lib::{
     self,
@@ -76,7 +76,7 @@ fn iterative_explosions(
                     !bombs_about_to_explode_before.iter().any(|(_, _, o)| o == offset)
                         && bombs_about_to_explode_before
                             .iter()
-                            .any(|(_, r, o)| in_range_of_bomb(*offset, *o, *r, &empty_tiles))
+                            .any(|(_, r, o)| in_range_of_bomb(*offset, *o, *r, empty_tiles))
                 })
                 .map(|(fuse, range, offset)| (fuse, range, offset)),
         );
@@ -125,10 +125,38 @@ impl Player for Bomber {
         surroundings: Vec<(Tile, Option<Object>, Option<Enemy>, TileOffset)>,
     ) -> Action {
         let safe_tiles = safe_subset(&surroundings);
-        let hill_center = weighted_center(
-            surroundings.iter().filter_map(|(t, _, _, o)| matches!(t, Tile::Hill).then_some(*o)),
+        let adjacents = TileOffset(0, 0).adjacents();
+        let safe_adjacents =
+            adjacents.iter().filter(|a| safe_tiles.contains(a)).collect::<Vec<_>>();
+        let hill_center = closest_to(
+            weighted_center(
+                surroundings
+                    .iter()
+                    .filter_map(|(t, _, _, o)| matches!(t, Tile::Hill).then_some(*o)),
+            ),
+            safe_tiles.iter().cloned(),
         );
-        todo!()
+
+        let total_center = closest_to(
+            weighted_center(surroundings.iter().map(|(.., o)| *o)),
+            safe_tiles.iter().cloned(),
+        );
+        let try_pathfind = |t: Option<TileOffset>| t.and_then(|t| pathfind(t, &safe_tiles));
+        let arbitrary_safe_direction =
+            safe_adjacents.iter().map(|a| main_direction(TileOffset(0, 0), **a)).next();
+        let direction = try_pathfind(hill_center)
+            .or_else(|| try_pathfind(total_center))
+            .or(arbitrary_safe_direction);
+
+        // TODO very reckless
+        let should_bomb = !safe_adjacents.is_empty();
+
+        match (direction, should_bomb) {
+            (None, true) => Action::DropBomb,
+            (None, false) => Action::StayStill,
+            (Some(d), true) => Action::DropBombAndMove(d),
+            (Some(d), false) => Action::Move(d),
+        }
     }
 
     fn name(&self) -> String {
