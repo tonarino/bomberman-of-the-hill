@@ -11,6 +11,8 @@ use bomber_macro::wasm_export;
 
 mod tile_utils;
 
+const TURN_LOOKAHEAD: usize = 2;
+
 type FullTile = (Tile, Option<Object>, Option<Enemy>, TileOffset);
 type Bomb = (Ticks, u32, TileOffset);
 
@@ -42,8 +44,12 @@ fn empty_tiles(surroundings: &[FullTile]) -> Vec<TileOffset> {
         .collect::<Vec<_>>()
 }
 
-// // Returns the vector of tiles that it's safe to stand on this turn
-fn safe_subset(surroundings: &[FullTile]) -> Vec<TileOffset> {
+struct SimulatedTurn {
+    safe_tiles: Vec<TileOffset>,
+    next_turn_surroundings: Vec<FullTile>,
+}
+
+fn simulate_turn(surroundings: &[FullTile]) -> SimulatedTurn {
     let bombs = bombs(surroundings);
     let empty_tiles = empty_tiles(surroundings);
     let mut bombs_about_to_explode: Vec<Bomb> =
@@ -52,7 +58,7 @@ fn safe_subset(surroundings: &[FullTile]) -> Vec<TileOffset> {
     // iteratively add all bombs that will be triggered by bombs about to explode.
     iterative_explosions(&mut bombs_about_to_explode, &bombs, &empty_tiles);
 
-    empty_tiles
+    let safe_tiles = empty_tiles
         .iter()
         .filter(|offset| {
             bombs_about_to_explode.iter().all(|(_, range, bomb_offset)| {
@@ -60,7 +66,36 @@ fn safe_subset(surroundings: &[FullTile]) -> Vec<TileOffset> {
             })
         })
         .cloned()
-        .collect()
+        .collect();
+
+    let next_turn_surroundings = surroundings
+        .iter()
+        .cloned()
+        .map(|(tile, object, enemy, offset)| match object {
+            // Clear bombs that are about to explode.
+            Some(Object::Bomb { .. })
+                if bombs_about_to_explode.iter().any(|(_, _, o)| *o == offset) =>
+            {
+                (tile, None, enemy, offset)
+            },
+            // Tick down the rest
+            Some(Object::Bomb { fuse_remaining, range }) => (
+                tile,
+                Some(Object::Bomb { fuse_remaining: Ticks(fuse_remaining.0 - 1), range }),
+                enemy,
+                offset,
+            ),
+            Some(Object::Crate)
+                if bombs_about_to_explode.iter().any(|(_, range, bomb_offset)| {
+                    in_range_of_bomb(offset, *bomb_offset, *range, &empty_tiles)
+                }) =>
+            {
+                (tile, None, enemy, offset)
+            },
+            _ => (tile, object, enemy, offset),
+        })
+        .collect::<Vec<_>>();
+    SimulatedTurn { safe_tiles, next_turn_surroundings }
 }
 
 fn iterative_explosions(
@@ -126,7 +161,7 @@ impl Player for Bomber {
         &mut self,
         surroundings: Vec<(Tile, Option<Object>, Option<Enemy>, TileOffset)>,
     ) -> Action {
-        let safe_tiles = safe_subset(&surroundings);
+        let SimulatedTurn { safe_tiles, next_turn_surroundings } = simulate_turn(&surroundings);
         let adjacents = TileOffset(0, 0).adjacents();
         let safe_adjacents =
             adjacents.iter().filter(|a| safe_tiles.contains(a)).collect::<Vec<_>>();
