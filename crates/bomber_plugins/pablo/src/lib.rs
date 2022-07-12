@@ -4,7 +4,7 @@ use tile_utils::{closest_to, main_direction, pathfind, weighted_center, TileOffs
 
 use bomber_lib::{
     self,
-    world::{Enemy, Object, Ticks, Tile, TileOffset},
+    world::{Direction, Enemy, Object, Ticks, Tile, TileOffset},
     Action, Player,
 };
 use bomber_macro::wasm_export;
@@ -15,7 +15,9 @@ type FullTile = (Tile, Option<Object>, Option<Enemy>, TileOffset);
 type Bomb = (Ticks, u32, TileOffset);
 
 #[derive(Default)]
-struct Bomber;
+struct Bomber {
+    last_turn_direction: Option<Direction>,
+}
 
 fn bombs(surroundings: &[FullTile]) -> Vec<Bomb> {
     surroundings
@@ -53,8 +55,8 @@ fn safe_subset(surroundings: &[FullTile]) -> Vec<TileOffset> {
     empty_tiles
         .iter()
         .filter(|offset| {
-            bombs_about_to_explode.iter().any(|(_, range, bomb_offset)| {
-                in_range_of_bomb(**offset, *bomb_offset, *range, &empty_tiles)
+            bombs_about_to_explode.iter().all(|(_, range, bomb_offset)| {
+                !in_range_of_bomb(**offset, *bomb_offset, *range, &empty_tiles)
             })
         })
         .cloned()
@@ -137,20 +139,32 @@ impl Player for Bomber {
             safe_tiles.iter().cloned(),
         );
 
-        let total_center = closest_to(
-            weighted_center(surroundings.iter().map(|(.., o)| *o)),
-            safe_tiles.iter().cloned(),
-        );
+        let total_center = weighted_center(surroundings.iter().map(|(.., o)| *o));
+        let total_center_closest_safe = closest_to(total_center, safe_tiles.iter().cloned());
         let try_pathfind = |t: Option<TileOffset>| t.and_then(|t| pathfind(t, &safe_tiles));
+        let general_center_direction = main_direction(TileOffset(0, 0), total_center);
         let arbitrary_safe_direction =
             safe_adjacents.iter().map(|a| main_direction(TileOffset(0, 0), **a)).next();
         let direction = try_pathfind(hill_center)
-            .or_else(|| try_pathfind(total_center))
+            .or_else(|| try_pathfind(total_center_closest_safe))
+            .or_else(|| {
+                self.last_turn_direction
+                    .and_then(|d| safe_adjacents.contains(&&d.extend(1)).then_some(d))
+            })
+            .or_else(|| {
+                safe_adjacents
+                    .contains(&&general_center_direction.extend(1))
+                    .then_some(general_center_direction)
+            })
             .or(arbitrary_safe_direction);
 
-        // TODO very reckless
-        let should_bomb = !safe_adjacents.is_empty();
+        let next_turn_adjacents = direction.map(|d| d.extend(1).adjacents()).unwrap_or(adjacents);
+        let mut safe_next_turn_adjacents =
+            next_turn_adjacents.iter().filter(|a| safe_tiles.contains(a));
+        let should_bomb = safe_next_turn_adjacents
+            .any(|a| !in_range_of_bomb(*a, TileOffset(0, 0), 3, &safe_tiles));
 
+        self.last_turn_direction = direction;
         match (direction, should_bomb) {
             (None, true) => Action::DropBomb,
             (None, false) => Action::StayStill,

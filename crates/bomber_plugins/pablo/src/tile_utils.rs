@@ -27,7 +27,11 @@ pub fn weighted_center(tiles: impl Iterator<Item = TileOffset>) -> TileOffset {
         acc = acc + tile;
         acc
     });
-    TileOffset(sum.0 / count, sum.1 / count)
+    if count > 0 {
+        TileOffset(sum.0 / count, sum.1 / count)
+    } else {
+        TileOffset(0, 0)
+    }
 }
 
 pub fn closest_to(
