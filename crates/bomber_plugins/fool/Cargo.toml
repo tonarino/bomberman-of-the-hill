@@ -10,10 +10,10 @@ strum = "0.21"
 lazy_static = "1"
 
 [dependencies.bomber_lib]
-path = "../../bomber_lib"
+git = "https://github.com/tonarino/bombercrab-player.git"
 
 [dependencies.bomber_macro]
-path = "../../bomber_macro"
+git = "https://github.com/tonarino/bombercrab-player.git"
 
 [lib]
 crate-type = ["cdylib"]
