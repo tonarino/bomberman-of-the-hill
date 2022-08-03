@@ -43,7 +43,6 @@ fn dead_player_score_cleanup_system(
 ) {
     for (entity, mut despawned) in despawned_query.iter_mut() {
         despawned.timer.tick(time.delta());
-        // Slowly fade the skeleton
         if despawned.timer.just_finished() {
             commands.entity(entity).despawn_recursive();
         }

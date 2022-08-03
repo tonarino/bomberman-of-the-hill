@@ -16,7 +16,7 @@ use crate::{
 
 // A bomb explodes after this number of ticks since it's placed on the map.
 const BOMB_FUSE_LENGTH: Ticks = Ticks(2);
-const BASE_BOMB_RANGE: u32 = 3;
+const BASE_BOMB_RANGE: u32 = 2;
 const CHANCE_OF_POWERUP_ON_CRATE: f32 = 0.3;
 
 pub struct ObjectPlugin;
