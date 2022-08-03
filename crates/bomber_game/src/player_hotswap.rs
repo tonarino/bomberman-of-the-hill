@@ -6,7 +6,10 @@ use bevy::{
 };
 use bomber_lib::world::Ticks;
 
+use crate::state::Round;
+
 pub struct PlayerHotswapPlugin;
+pub const MAX_PLAYERS: usize = 8;
 
 /// Handle into a .wasm file, classified by whether or not it misbehaved.
 #[derive(Clone, Debug)]
@@ -79,11 +82,16 @@ impl AssetLoader for WasmPlayerLoader {
 }
 
 /// Maintains the `PlayerHandles` resource in sync with the files in the hotswap folder.
-fn hotswap_system(asset_server: Res<AssetServer>, mut handles: ResMut<PlayerHandles>) {
-    let mut new_handles = asset_server.load_folder("players").unwrap();
+fn hotswap_system(
+    asset_server: Res<AssetServer>,
+    mut handles: ResMut<PlayerHandles>,
+    round: Res<Round>,
+) {
+    let mut new_handles = asset_server.load_folder(format!("rounds/{}", round.0)).unwrap();
     // Remove any handles associated to files that have disappeared from the folder
     handles.0.retain(|h| new_handles.iter().any(|new| new.id == h.inner().id));
     // Add any handles that aren't already present and misbehaving
     new_handles.retain(|h| handles.0.iter().all(|old| old.inner().id != h.id));
     handles.0.extend(new_handles.into_iter().map(|new| PlayerHandle::ReadyToSpawn(new.typed())));
+    handles.0.truncate(MAX_PLAYERS);
 }

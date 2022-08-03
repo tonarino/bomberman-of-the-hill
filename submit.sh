@@ -17,6 +17,6 @@ fi
 
 cargo build --release -p ${CRATE_NAME} --target wasm32-unknown-unknown
 
-FILE="target/wasm32-unknown-unknown/debug/${CRATE_NAME}.wasm"
+FILE="target/wasm32-unknown-unknown/release/${CRATE_NAME}.wasm"
 echo "Submitting ${FILE} to ${UPLOAD_SERVER_ADDRESS}."
 curl -X POST -H "Api-Key: ${API_KEY}" --data-binary @${FILE} http://${UPLOAD_SERVER_ADDRESS}/

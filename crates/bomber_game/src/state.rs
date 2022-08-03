@@ -1,8 +1,12 @@
 //! Defines a Bevy plugin that manages transitions between the game states.
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use bevy::prelude::*;
-use std::time::Duration;
+use std::{
+    fs::{self, create_dir_all},
+    path::Path,
+    time::Duration,
+};
 
 use crate::log_unrecoverable_error_and_panic;
 
@@ -17,15 +21,32 @@ pub enum AppState {
     VictoryScreen,
 }
 
+pub struct Round(pub u32);
+
 const GAME_DURATION: Duration = Duration::from_secs(5 * 60);
 const VICTORY_SCREEN_DURATION: Duration = Duration::from_secs(30);
+const FINISHED_ROUND_MARKER_FILENAME: &str = "round-finished.marker";
+const ROUNDS_FOLDER: &str = "rounds";
+const MAX_ROUNDS: u32 = 10_000;
 
 #[derive(Component)]
 pub struct RoundTimer(pub Timer);
 
 impl Plugin for AppStatePlugin {
     fn build(&self, app: &mut App) {
+        let first_round = (1..MAX_ROUNDS)
+            .find(|r| {
+                !Path::new(ROUNDS_FOLDER)
+                    .join(r.to_string())
+                    .join(FINISHED_ROUND_MARKER_FILENAME)
+                    .exists()
+            })
+            .expect("All possible round slots are full");
+        create_dir_all(Path::new(ROUNDS_FOLDER).join(first_round.to_string()))
+            .expect("Failed to create round folder");
+
         app.add_startup_system(setup)
+            .insert_resource(Round(first_round))
             .add_system(app_state_system.chain(log_unrecoverable_error_and_panic))
             .add_state(AppState::InGame);
     }
@@ -39,6 +60,7 @@ fn app_state_system(
     mut timer_query: Query<(Entity, &mut RoundTimer)>,
     time: Res<Time>,
     mut app_state: ResMut<State<AppState>>,
+    mut round: ResMut<Round>,
     mut commands: Commands,
 ) -> Result<()> {
     let (timer_entity, mut timer) = timer_query.single_mut();
@@ -47,7 +69,18 @@ fn app_state_system(
     if timer.tick(time.delta()).just_finished() {
         let (next_state, next_duration) = match app_state.current() {
             AppState::InGame => (AppState::VictoryScreen, VICTORY_SCREEN_DURATION),
-            AppState::VictoryScreen => (AppState::InGame, GAME_DURATION),
+            AppState::VictoryScreen => {
+                let finished_round_path = Path::new(ROUNDS_FOLDER)
+                    .join(round.0.to_string())
+                    .join(FINISHED_ROUND_MARKER_FILENAME);
+
+                fs::write(&finished_round_path, &[])
+                    .with_context(|| format!("writing {:?}", finished_round_path))?;
+                round.0 += 1;
+                create_dir_all(Path::new(ROUNDS_FOLDER).join(round.0.to_string()))
+                    .expect("Failed to create round folder");
+                (AppState::InGame, GAME_DURATION)
+            },
         };
         app_state.set(next_state)?;
         commands.entity(timer_entity).despawn();

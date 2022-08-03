@@ -9,7 +9,7 @@ use crate::{
     player_behaviour::{Player, PlayerDespawnedEvent, PlayerName, SpawnPlayerEvent},
     rendering::TILE_HEIGHT_PX,
     score::Score,
-    state::{AppState, RoundTimer},
+    state::{AppState, Round, RoundTimer},
 };
 
 pub struct GameUiPlugin;
@@ -35,6 +35,7 @@ fn score_panel_system(
     player_query: Query<(&Player, &PlayerName, &Score)>,
     dead_query: Query<(&PlayerName, &Score, &DespawnedPlayerMarker)>,
     round_timer_query: Query<&RoundTimer>,
+    round: Res<Round>,
     textures: Res<object::Textures>,
 ) {
     let mut score_entries = player_query.iter().collect::<Vec<_>>();
@@ -52,7 +53,8 @@ fn score_panel_system(
     egui::SidePanel::left("Player Score").resizable(false).show(egui_context.ctx_mut(), |ui| {
         ui.vertical_centered_justified(|ui| {
             let label_text =
-                RichText::new(format!("Round ends in {minutes}:{seconds:02}")).size(25.0);
+                RichText::new(format!("Round {} ends in {minutes}:{seconds:02}", round.0))
+                    .size(25.0);
             ui.label(label_text);
             ui.separator();
             ui.heading(RichText::new("Player Score").strong());

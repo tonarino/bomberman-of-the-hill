@@ -3,4 +3,5 @@
 /.env
 Cargo.lock
 *.wasm
+round-finished.marker
 **/.DS_Store

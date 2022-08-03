@@ -6,7 +6,7 @@ use crate::{
     player_behaviour::{PlayerName, Team},
     rendering::{PLAYER_HEIGHT_PX, PLAYER_WIDTH_PX, VICTORY_SCREEN_ITEMS_Z, VICTORY_SCREEN_Z},
     score::Score,
-    state::{AppState, RoundTimer},
+    state::{AppState, Round, RoundTimer},
 };
 
 pub struct VictoryScreenPlugin;
@@ -44,6 +44,7 @@ fn setup(
     mut texture_atlases: ResMut<Assets<TextureAtlas>>,
     fonts: Res<Fonts>,
     windows: Res<Windows>,
+    round: Res<Round>,
     mut commands: Commands,
 ) {
     let window = windows.get_primary().unwrap();
@@ -63,7 +64,7 @@ fn setup(
         })
         .with_children(|parent| {
             spawn_podium(parent, player_query, &asset_server, &mut texture_atlases, &fonts);
-            spawn_countdown_text(parent, &fonts);
+            spawn_countdown_text(parent, &fonts, &round);
         });
 }
 
@@ -108,9 +109,9 @@ fn spawn_podium(
     }
 }
 
-fn spawn_countdown_text(parent: &mut ChildBuilder, fonts: &Fonts) {
+fn spawn_countdown_text(parent: &mut ChildBuilder, fonts: &Fonts, round: &Round) {
     parent.spawn().insert_bundle(Text2dBundle {
-        text: mono_text("Next round in...", 30.0, fonts),
+        text: mono_text(&format!("Next round ({}) in...", round.0 + 1), 30.0, fonts),
         transform: Transform::from_translation(Vec3::new(0.0, -200.0, VICTORY_SCREEN_ITEMS_Z)),
         ..Default::default()
     });
