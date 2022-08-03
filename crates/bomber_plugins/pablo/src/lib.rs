@@ -14,9 +14,20 @@ const TURN_LOOKAHEAD: usize = 3;
 type FullTile = (Tile, Option<Object>, Option<Enemy>, TileOffset);
 type Bomb = (Ticks, u32, TileOffset);
 
-#[derive(Default)]
 struct Bomber {
     boring_tiles: Vec<TileOffset>,
+    direction_preference: Direction,
+    direction_preference_turns: u32,
+}
+
+impl Default for Bomber {
+    fn default() -> Self {
+        Self {
+            boring_tiles: vec![],
+            direction_preference: Direction::West,
+            direction_preference_turns: 10,
+        }
+    }
 }
 
 fn bombs(surroundings: &[FullTile]) -> Vec<Bomb> {
@@ -282,6 +293,26 @@ impl Player for Bomber {
                 (Move(_) | StayStill, DropBomb | DropBombAndMove(_)) => Ordering::Greater,
             },
         );
+        // Prioritize plans in our current preferred directions to avoid loops
+        plans.sort_by(|a, b| {
+            if let Some((a, b)) = match (a.first_action, b.first_action) {
+                (Move(a), Move(b)) => Some((a, b)),
+                (Move(a), DropBombAndMove(b)) => Some((a, b)),
+                (DropBombAndMove(a), Move(b)) => Some((a, b)),
+                (DropBombAndMove(a), DropBombAndMove(b)) => Some((a, b)),
+                _ => None,
+            } {
+                if a == self.direction_preference && b != self.direction_preference {
+                    Ordering::Less
+                } else if b == self.direction_preference && a != self.direction_preference {
+                    Ordering::Greater
+                } else {
+                    Ordering::Equal
+                }
+            } else {
+                Ordering::Equal
+            }
+        });
         // Prioritize plans that get us to new areas, unless the current area is hilly
         plans.sort_by(|a, b| {
             match (
@@ -337,6 +368,18 @@ impl Player for Bomber {
                 _ => TileOffset(0, 0),
             };
             *tile = *tile + displacement;
+        }
+
+        if self.direction_preference_turns == 0 {
+            self.direction_preference = match self.direction_preference {
+                Direction::West => Direction::North,
+                Direction::North => Direction::East,
+                Direction::East => Direction::South,
+                Direction::South => Direction::North,
+            };
+            self.direction_preference_turns = 10;
+        } else {
+            self.direction_preference_turns -= 1;
         }
         action
     }
@@ -465,7 +508,7 @@ mod test {
                 (Tile::Wall, None, None, TileOffset(2, -1)),
             ];
 
-        let mut player = Bomber { boring_tiles: vec![] };
+        let mut player = Bomber::default();
         let decision = player.act(surroundings);
         assert_eq!(decision, Action::Move(Direction::North));
     }
