@@ -406,10 +406,13 @@ fn pick_up_power_up_system(
 }
 
 fn cleanup(
-    bomb_query: Query<Entity, Or<(With<BombMarker>, With<ExplosionMarker>)>>,
+    cleanables_query: Query<
+        Entity,
+        Or<(With<BombMarker>, With<PowerUpMarker>, With<ExplosionMarker>)>,
+    >,
     mut commands: Commands,
 ) {
-    for entity in bomb_query.iter() {
+    for entity in cleanables_query.iter() {
         commands.entity(entity).despawn_recursive();
     }
 }
