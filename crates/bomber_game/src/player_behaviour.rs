@@ -84,8 +84,7 @@ const BAN_SIGN_DURATION: Duration = Duration::from_secs(3);
 
 const RESPAWN_TIME: Ticks = Ticks(3);
 /// Number of allowed WASM instructions per player and per tick. It should be enough to cover non-pathological usage patterns.
-/// As a reference, very very basic players like the wanderer and fool spend about 15_000 fuel per turn compiled with --release.
-const FUEL_PER_TICK: u64 = 15_000_000;
+const FUEL_PER_TICK: u64 = 1_000_000_000;
 
 impl Plugin for PlayerBehaviourPlugin {
     fn build(&self, app: &mut App) {

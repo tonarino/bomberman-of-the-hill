@@ -192,13 +192,14 @@ fn bomb_explosion_system(
 
     let mut any_bomb_exploded = false;
     for BombExplodeEvent { bomb, location } in exploded_bombs.iter() {
-        let range = if let Object::Bomb { range, .. } =
-            **bomb_query.get(*bomb).expect("Invalid bomb entity")
-        {
-            range
-        } else {
-            panic!("Invalidly tagged object");
-        };
+        let range =
+            if let Ok(ExternalCrateComponent(Object::Bomb { range, .. })) = bomb_query.get(*bomb) {
+                range
+            } else {
+                // Duplicate bomb explode events are possible during chain reactions depending on system order
+                continue;
+            };
+
         commands.entity(*bomb).despawn_recursive();
         commands
             .spawn()
@@ -212,7 +213,7 @@ fn bomb_explosion_system(
                     &object_query,
                     &player_query,
                     &mut kill_events,
-                    range,
+                    *range,
                     game_map,
                     &textures,
                 );
