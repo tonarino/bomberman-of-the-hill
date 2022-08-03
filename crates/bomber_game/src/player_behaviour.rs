@@ -84,8 +84,7 @@ const BAN_SIGN_DURATION: Duration = Duration::from_secs(3);
 
 const RESPAWN_TIME: Ticks = Ticks(3);
 /// Number of allowed WASM instructions per player and per tick. It should be enough to cover non-pathological usage patterns.
-/// As a reference, very very basic players like the wanderer and fool spend about 15_000 fuel per turn compiled with --release.
-const FUEL_PER_TICK: u64 = 15_000_000;
+const FUEL_PER_TICK: u64 = 1_000_000_000;
 
 impl Plugin for PlayerBehaviourPlugin {
     fn build(&self, app: &mut App) {
@@ -336,9 +335,12 @@ fn player_positioning_system(
 ) -> Result<()> {
     for PlayerMovedEvent { entity, from, to } in events.iter() {
         let game_map = game_map_query.single();
-        let start = from.as_world_coordinates(game_map).extend(PLAYER_Z)
+        // Players render over everything else, and in particular over other things above them (in the Y direction)
+        // so we achieve this by having a Z offset dependant on Y
+        let z_offset = 0.001 * (game_map.height() - to.1) as f32;
+        let start = from.as_world_coordinates(game_map).extend(PLAYER_Z + z_offset)
             + Vec3::new(0.0, PLAYER_VERTICAL_OFFSET_PX, 0.0);
-        let end = to.as_world_coordinates(game_map).extend(PLAYER_Z)
+        let end = to.as_world_coordinates(game_map).extend(PLAYER_Z + z_offset)
             + Vec3::new(0.0, PLAYER_VERTICAL_OFFSET_PX, 0.0);
         commands.entity(*entity).insert(Animator::new(Tween::new(
             EaseMethod::Linear,
@@ -379,27 +381,32 @@ fn player_action_system(
     mut handles: ResMut<PlayerHandles>,
     mut event_writer: EventWriter<PlayerMovedEvent>,
 ) -> Result<()> {
-    let locations = player_query.iter().map(|(_, l, ..)| *l).collect::<Vec<_>>();
-    let potential_enemies = player_query
-        .iter()
-        .map(|(_, l, _, _, _, n, t, s, _, _)| {
-            (Enemy { name: n.0.clone(), team_name: t.name.clone(), score: s.0 }, *l)
-        })
-        .collect::<Vec<_>>();
     for _ in ticks.iter().filter(|t| matches!(t, Tick::Player)) {
-        for (
-            player_entity,
-            mut location,
-            mut animation,
-            mut store,
-            instance,
-            player_name,
-            _,
-            _,
-            mut player,
-            handle_inner,
-        ) in player_query.iter_mut()
-        {
+        let player_count = player_query.iter().count();
+        // This slightly awkward control flow ensures we have the appropriate player positions for each iteration
+        // over the players, so they don't end up incorrectly occupying the same spot.
+        for i in 0..player_count {
+            let locations = player_query.iter().map(|(_, l, ..)| *l).collect::<Vec<_>>();
+            let potential_enemies = player_query
+                .iter()
+                .map(|(_, l, _, _, _, n, t, s, _, _)| {
+                    (Enemy { name: n.0.clone(), team_name: t.name.clone(), score: s.0 }, *l)
+                })
+                .collect::<Vec<_>>();
+
+            let (
+                player_entity,
+                mut location,
+                mut animation,
+                mut store,
+                instance,
+                player_name,
+                _,
+                _,
+                mut player,
+                handle_inner,
+            ) = player_query.iter_mut().nth(i).unwrap();
+
             let enemies = potential_enemies
                 .iter()
                 .filter(|(_, l)| *l != *location)

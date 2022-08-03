@@ -15,7 +15,7 @@ use crate::{
 };
 
 // A bomb explodes after this number of ticks since it's placed on the map.
-const BOMB_FUSE_LENGTH: Ticks = Ticks(4);
+const BOMB_FUSE_LENGTH: Ticks = Ticks(2);
 const BASE_BOMB_RANGE: u32 = 2;
 const CHANCE_OF_POWERUP_ON_CRATE: f32 = 0.3;
 
@@ -158,8 +158,9 @@ fn fuse_remaining_system(
         for (bomb, &location, mut object) in bomb_query.iter_mut() {
             let should_explode = match **object {
                 Object::Bomb { ref mut fuse_remaining, .. } => {
+                    let should_explode = fuse_remaining.0 == 0;
                     fuse_remaining.0 = fuse_remaining.0.saturating_sub(1);
-                    fuse_remaining.0 == 0
+                    should_explode
                 },
                 _ => false,
             };
@@ -191,13 +192,14 @@ fn bomb_explosion_system(
 
     let mut any_bomb_exploded = false;
     for BombExplodeEvent { bomb, location } in exploded_bombs.iter() {
-        let range = if let Object::Bomb { range, .. } =
-            **bomb_query.get(*bomb).expect("Invalid bomb entity")
-        {
-            range
-        } else {
-            panic!("Invalidly tagged object");
-        };
+        let range =
+            if let Ok(ExternalCrateComponent(Object::Bomb { range, .. })) = bomb_query.get(*bomb) {
+                range
+            } else {
+                // Duplicate bomb explode events are possible during chain reactions depending on system order
+                continue;
+            };
+
         commands.entity(*bomb).despawn_recursive();
         commands
             .spawn()
@@ -211,7 +213,7 @@ fn bomb_explosion_system(
                     &object_query,
                     &player_query,
                     &mut kill_events,
-                    range,
+                    *range,
                     game_map,
                     &textures,
                 );

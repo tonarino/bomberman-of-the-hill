@@ -5,9 +5,9 @@ pub const TILE_HEIGHT_PX: f32 = 64.0 * SCALE_PX;
 
 pub const GAME_MAP_Z: f32 = 0.0;
 pub const GAME_OBJECT_Z: f32 = GAME_MAP_Z + 1.0;
-pub const PLAYER_Z: f32 = GAME_OBJECT_Z + 1.0;
-pub const FLAME_Z: f32 = PLAYER_Z + 1.0;
-pub const VICTORY_SCREEN_Z: f32 = FLAME_Z + 1.0;
+pub const FLAME_Z: f32 = GAME_OBJECT_Z + 1.0;
+pub const PLAYER_Z: f32 = FLAME_Z + 1.0;
+pub const VICTORY_SCREEN_Z: f32 = PLAYER_Z + 1.0;
 pub const VICTORY_SCREEN_ITEMS_Z: f32 = VICTORY_SCREEN_Z + 1.0;
 
 pub const PLAYER_WIDTH_PX: f32 = 64.0 * SCALE_PX;

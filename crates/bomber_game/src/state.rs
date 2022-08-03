@@ -23,8 +23,8 @@ pub enum AppState {
 
 pub struct Round(pub u32);
 
-const GAME_DURATION: Duration = Duration::from_secs(5 * 60);
-const VICTORY_SCREEN_DURATION: Duration = Duration::from_secs(30);
+const GAME_DURATION: Duration = Duration::from_secs(3 * 60);
+const VICTORY_SCREEN_DURATION: Duration = Duration::from_secs(20);
 const FINISHED_ROUND_MARKER_FILENAME: &str = "round-finished.marker";
 const ROUNDS_FOLDER: &str = "rounds";
 const MAX_ROUNDS: u32 = 10_000;

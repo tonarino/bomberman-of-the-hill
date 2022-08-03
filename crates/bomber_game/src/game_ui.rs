@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use bevy::prelude::*;
 use bevy_egui::{
     egui::{self, epaint::Shadow, style::Widgets, Color32, RichText, Stroke},
@@ -14,19 +16,36 @@ use crate::{
 
 pub struct GameUiPlugin;
 
+const DESPAWNED_MARKER_DURATION: Duration = Duration::from_secs(10);
+
 /// Marker component that identifies a score/name pair as belonging to a dead
 /// (despawned) player, so their last score is visible until they respawn.
 #[derive(Component)]
 struct DespawnedPlayerMarker {
     reason: String,
+    timer: Timer,
 }
 
 impl Plugin for GameUiPlugin {
     fn build(&self, app: &mut App) {
         app.add_plugin(EguiPlugin);
         app.add_system(dead_player_score_system);
+        app.add_system(dead_player_score_cleanup_system);
         app.add_system_set(SystemSet::on_update(AppState::InGame).with_system(score_panel_system));
         app.add_startup_system(configure_visuals);
+    }
+}
+
+fn dead_player_score_cleanup_system(
+    mut commands: Commands,
+    time: Res<Time>,
+    mut despawned_query: Query<(Entity, &mut DespawnedPlayerMarker)>,
+) {
+    for (entity, mut despawned) in despawned_query.iter_mut() {
+        despawned.timer.tick(time.delta());
+        if despawned.timer.just_finished() {
+            commands.entity(entity).despawn_recursive();
+        }
     }
 }
 
@@ -100,7 +119,8 @@ fn score_panel_system(
                     });
                     ui.end_row();
                 }
-                for (PlayerName(name), score, DespawnedPlayerMarker { reason }) in dead_query.iter()
+                for (PlayerName(name), score, DespawnedPlayerMarker { reason, .. }) in
+                    dead_query.iter()
                 {
                     ui.colored_label(
                         tonari_color::STRAWBERRY_LETTER_23,
@@ -139,11 +159,10 @@ fn dead_player_score_system(
     for PlayerDespawnedEvent(name, score, reason) in despawn_events.iter() {
         // The player themselves will be despawned this frame, but we instead insert a score marker that will persist
         // until they despawn.
-        commands
-            .spawn()
-            .insert(name.clone())
-            .insert(*score)
-            .insert(DespawnedPlayerMarker { reason: reason.clone() });
+        commands.spawn().insert(name.clone()).insert(*score).insert(DespawnedPlayerMarker {
+            reason: reason.clone(),
+            timer: Timer::new(DESPAWNED_MARKER_DURATION, false),
+        });
     }
 }
 

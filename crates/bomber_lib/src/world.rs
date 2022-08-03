@@ -126,6 +126,13 @@ impl std::ops::Add for TileOffset {
         Self(self.0 + rhs.0, self.1 + rhs.1)
     }
 }
+impl std::ops::Sub for TileOffset {
+    type Output = Self;
+
+    fn sub(self, rhs: Self) -> Self::Output {
+        Self(self.0 - rhs.0, self.1 - rhs.1)
+    }
+}
 
 /// Quality of life conversion.
 impl TryFrom<TileOffset> for Direction {
