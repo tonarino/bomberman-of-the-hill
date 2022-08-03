@@ -346,7 +346,7 @@ impl Player for Bomber {
     }
 
     fn team_name() -> String {
-        "Asbestos".into()
+        "Written in C".into()
     }
 }
 

@@ -205,6 +205,10 @@ impl GameMap {
 
         Ok(())
     }
+
+    pub fn height(&self) -> usize {
+        self.height
+    }
 }
 
 #[derive(Component, Copy, Clone, Debug, Eq, PartialEq)]
