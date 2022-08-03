@@ -4,3 +4,4 @@
 Cargo.lock
 *.wasm
 **/.DS_Store
+rounds/

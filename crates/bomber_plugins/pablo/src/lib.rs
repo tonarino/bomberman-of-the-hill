@@ -1,6 +1,6 @@
 use anyhow::{anyhow, Result};
-use std::cmp::{max, min};
-use tile_utils::{closest_to, main_direction, pathfind, weighted_center, TileOffsetExt};
+use std::cmp::{max, min, Ordering};
+use tile_utils::weighted_center;
 
 use bomber_lib::{
     self,
@@ -17,9 +17,7 @@ type FullTile = (Tile, Option<Object>, Option<Enemy>, TileOffset);
 type Bomb = (Ticks, u32, TileOffset);
 
 #[derive(Default)]
-struct Bomber {
-    last_turn_direction: Option<Direction>,
-}
+struct Bomber;
 
 fn bombs(surroundings: &[FullTile]) -> Vec<Bomb> {
     surroundings
@@ -44,13 +42,80 @@ fn empty_tiles(surroundings: &[FullTile]) -> Vec<TileOffset> {
         .collect::<Vec<_>>()
 }
 
+#[derive(Debug)]
 struct SimulatedTurn {
-    safe_tiles: Vec<TileOffset>,
-    next_turn_surroundings: Vec<FullTile>,
+    // If none, it means you died :(
+    next_turn_surroundings: Option<Vec<FullTile>>,
+    next_position: TileOffset,
 }
 
-fn simulate_turn(surroundings: &[FullTile]) -> SimulatedTurn {
-    let bombs = bombs(surroundings);
+#[derive(Clone, Debug)]
+struct MultiTurnPlan {
+    first_action: Action,
+    final_surroundings: Vec<FullTile>,
+    final_position: TileOffset,
+}
+
+impl MultiTurnPlan {
+    fn continue_with(mut self, action: Action) -> Option<MultiTurnPlan> {
+        let simulated_turn = simulate_turn(&self.final_surroundings, action);
+        self.final_surroundings = simulated_turn.next_turn_surroundings?;
+        self.final_position = simulated_turn.next_position;
+        Some(self)
+    }
+}
+
+fn all_possible_actions() -> impl Iterator<Item = Action> {
+    [
+        Action::StayStill,
+        Action::DropBomb,
+        Action::DropBombAndMove(Direction::East),
+        Action::DropBombAndMove(Direction::North),
+        Action::DropBombAndMove(Direction::South),
+        Action::DropBombAndMove(Direction::West),
+        Action::Move(Direction::East),
+        Action::Move(Direction::North),
+        Action::Move(Direction::South),
+        Action::Move(Direction::West),
+    ]
+    .into_iter()
+}
+
+fn all_possible_plans(surroundings: &[FullTile]) -> Vec<MultiTurnPlan> {
+    let mut plans = all_possible_actions()
+            // We filter out standing bombs because it's a terrible idea in general.
+        .filter(|a| a != &Action::DropBomb)
+        .filter_map(|a| {
+            let SimulatedTurn { next_turn_surroundings, next_position } =
+                simulate_turn(surroundings, a);
+            next_turn_surroundings.map(|s| MultiTurnPlan {
+                first_action: a,
+                final_surroundings: s,
+                final_position: next_position,
+            })
+        })
+        .collect::<Vec<_>>();
+
+    for _ in 0..TURN_LOOKAHEAD {
+        plans = plans
+            .iter()
+            .flat_map(|plan| {
+                all_possible_actions().filter_map(|action| plan.clone().continue_with(action))
+            })
+            .collect();
+    }
+
+    plans
+}
+
+fn simulate_turn(surroundings: &[FullTile], action: Action) -> SimulatedTurn {
+    let mut bombs = bombs(surroundings);
+    match action {
+        Action::DropBomb | Action::DropBombAndMove(_) => {
+            bombs.push((Ticks(3), 3, TileOffset(0, 0)))
+        },
+        _ => (),
+    }
     let empty_tiles = empty_tiles(surroundings);
     let mut bombs_about_to_explode: Vec<Bomb> =
         bombs.iter().cloned().filter(|(Ticks(t), _, _)| *t == 0).collect();
@@ -58,15 +123,22 @@ fn simulate_turn(surroundings: &[FullTile]) -> SimulatedTurn {
     // iteratively add all bombs that will be triggered by bombs about to explode.
     iterative_explosions(&mut bombs_about_to_explode, &bombs, &empty_tiles);
 
-    let safe_tiles = empty_tiles
-        .iter()
-        .filter(|offset| {
-            bombs_about_to_explode.iter().all(|(_, range, bomb_offset)| {
-                !in_range_of_bomb(**offset, *bomb_offset, *range, &empty_tiles)
-            })
+    let mut safe_tiles = empty_tiles.iter().filter(|offset| {
+        bombs_about_to_explode.iter().all(|(_, range, bomb_offset)| {
+            !in_range_of_bomb(**offset, *bomb_offset, *range, &empty_tiles)
         })
-        .cloned()
-        .collect();
+    });
+
+    let next_position = match action {
+        Action::Move(d) => d.extend(1),
+        Action::StayStill => TileOffset(0, 0),
+        Action::DropBomb => TileOffset(0, 0),
+        Action::DropBombAndMove(d) => d.extend(1),
+    };
+
+    if !safe_tiles.any(|t| t == &next_position) {
+        return SimulatedTurn { next_turn_surroundings: None, next_position };
+    }
 
     let next_turn_surroundings = surroundings
         .iter()
@@ -94,8 +166,23 @@ fn simulate_turn(surroundings: &[FullTile]) -> SimulatedTurn {
             },
             _ => (tile, object, enemy, offset),
         })
+        .map(|(tile, object, enemy, offset)| match action {
+            Action::Move(d) => (tile, object, enemy, offset - d.extend(1)),
+            Action::StayStill => (tile, object, enemy, offset),
+            Action::DropBomb if offset == TileOffset(0, 0) => {
+                (tile, Some(Object::Bomb { fuse_remaining: Ticks(3), range: 3 }), enemy, offset)
+            },
+            Action::DropBomb => (tile, object, enemy, offset),
+            Action::DropBombAndMove(d) if offset == TileOffset(0, 0) => (
+                tile,
+                Some(Object::Bomb { fuse_remaining: Ticks(3), range: 3 }),
+                enemy,
+                offset - d.extend(1),
+            ),
+            Action::DropBombAndMove(d) => (tile, object, enemy, offset - d.extend(1)),
+        })
         .collect::<Vec<_>>();
-    SimulatedTurn { safe_tiles, next_turn_surroundings }
+    SimulatedTurn { next_turn_surroundings: Some(next_turn_surroundings), next_position }
 }
 
 fn iterative_explosions(
@@ -161,51 +248,77 @@ impl Player for Bomber {
         &mut self,
         surroundings: Vec<(Tile, Option<Object>, Option<Enemy>, TileOffset)>,
     ) -> Action {
-        let SimulatedTurn { safe_tiles, next_turn_surroundings } = simulate_turn(&surroundings);
-        let adjacents = TileOffset(0, 0).adjacents();
-        let safe_adjacents =
-            adjacents.iter().filter(|a| safe_tiles.contains(a)).collect::<Vec<_>>();
-        let hill_center = closest_to(
-            weighted_center(
-                surroundings
-                    .iter()
-                    .filter_map(|(t, _, _, o)| matches!(t, Tile::Hill).then_some(*o)),
-            ),
-            safe_tiles.iter().cloned(),
+        // Precalculate all viable plan N turns ahead (obviously limited by our current line of sight and
+        // understanding). This includes only plans that don't get us killed!
+        let mut plans = all_possible_plans(&surroundings);
+        let hill_center = weighted_center(
+            surroundings.iter().filter_map(|(t, _, _, o)| matches!(t, Tile::Hill).then_some(*o)),
         );
 
         let total_center = weighted_center(surroundings.iter().map(|(.., o)| *o));
-        let total_center_closest_safe = closest_to(total_center, safe_tiles.iter().cloned());
-        let try_pathfind = |t: Option<TileOffset>| t.and_then(|t| pathfind(t, &safe_tiles));
-        let general_center_direction = main_direction(TileOffset(0, 0), total_center);
-        let arbitrary_safe_direction =
-            safe_adjacents.iter().map(|a| main_direction(TileOffset(0, 0), **a)).next();
-        let direction = try_pathfind(hill_center)
-            .or_else(|| try_pathfind(total_center_closest_safe))
-            .or_else(|| {
-                self.last_turn_direction
-                    .and_then(|d| safe_adjacents.contains(&&d.extend(1)).then_some(d))
-            })
-            .or_else(|| {
-                safe_adjacents
-                    .contains(&&general_center_direction.extend(1))
-                    .then_some(general_center_direction)
-            })
-            .or(arbitrary_safe_direction);
+        let crates_center = weighted_center(
+            surroundings
+                .iter()
+                .filter_map(|(_, obj, _, o)| matches!(obj, Some(Object::Crate)).then_some(*o)),
+        );
 
-        let next_turn_adjacents = direction.map(|d| d.extend(1).adjacents()).unwrap_or(adjacents);
-        let mut safe_next_turn_adjacents =
-            next_turn_adjacents.iter().filter(|a| safe_tiles.contains(a));
-        let should_bomb = safe_next_turn_adjacents
-            .any(|a| !in_range_of_bomb(*a, TileOffset(0, 0), 3, &safe_tiles));
+        use Action::*;
 
-        self.last_turn_direction = direction;
-        match (direction, should_bomb) {
-            (None, true) => Action::DropBomb,
-            (None, false) => Action::StayStill,
-            (Some(d), true) => Action::DropBombAndMove(d),
-            (Some(d), false) => Action::Move(d),
-        }
+        // Iteratively stable-sort the vector until the ideal plan is found.
+        //
+        // Plans that involve bombing (and we know are safe) are always best.
+        plans.sort_by(
+            |&MultiTurnPlan { first_action: a, .. }, &MultiTurnPlan { first_action: b, .. }| match (
+                a, b,
+            ) {
+                (DropBomb | DropBombAndMove(_), Move(_) | StayStill) => Ordering::Less,
+                (DropBomb | DropBombAndMove(_), DropBomb | DropBombAndMove(_)) => Ordering::Equal,
+                (StayStill | Move(_), StayStill | Move(_)) => Ordering::Equal,
+                (Move(_) | StayStill, DropBomb | DropBombAndMove(_)) => Ordering::Greater,
+            },
+        );
+        // Prioritize plans that move us to the center of mass of our vision range, to avoid the corners
+        plans.sort_by(
+            |&MultiTurnPlan { final_position: a, .. }, &MultiTurnPlan { final_position: b, .. }| {
+                (total_center - a).taxicab_distance().cmp(&(total_center - b).taxicab_distance())
+            },
+        );
+        // Prioritize plans that move us to the center of mass of crates, to ensure we can get more powerups
+        plans.sort_by(
+            |&MultiTurnPlan { final_position: a, .. }, &MultiTurnPlan { final_position: b, .. }| {
+                (crates_center - a).taxicab_distance().cmp(&(crates_center - b).taxicab_distance())
+            },
+        );
+        // Get us to the hills!
+        plans.sort_by(
+            |&MultiTurnPlan { final_position: a, .. }, &MultiTurnPlan { final_position: b, .. }| {
+                (hill_center - a).taxicab_distance().cmp(&(hill_center - b).taxicab_distance())
+            },
+        );
+        // As a maximum priority, choose plans that get us new powerups
+        plans.sort_by(
+            |&MultiTurnPlan { final_position: a, .. }, &MultiTurnPlan { final_position: b, .. }| {
+                let a_has_powerup = surroundings
+                    .iter()
+                    .any(|(_, obj, _, off)| matches!(obj, Some(Object::PowerUp(_))) && *off == a);
+                let b_has_powerup = surroundings
+                    .iter()
+                    .any(|(_, obj, _, off)| matches!(obj, Some(Object::PowerUp(_))) && *off == b);
+                match (a_has_powerup, b_has_powerup) {
+                    (true, true) => Ordering::Equal,
+                    (true, false) => Ordering::Less,
+                    (false, true) => Ordering::Equal,
+                    (false, false) => Ordering::Equal,
+                }
+            },
+        );
+
+        // Choose the best plan, and if there's none just stand still and await for death :(
+        plans
+            .get(0)
+            .map(|MultiTurnPlan { first_action, .. }| first_action)
+            .cloned()
+            .unwrap_or(Action::StayStill)
     }
 
     fn name(&self) -> String {
@@ -235,5 +348,76 @@ mod test {
             tiles_between(TileOffset(3, 8), TileOffset(3, 8)).unwrap(),
             vec![] // identical
         );
+    }
+
+    #[test]
+    fn sorting_plans() {
+        let mut plans = vec![
+            MultiTurnPlan {
+                first_action: Action::Move(Direction::North),
+                final_surroundings: vec![],
+                final_position: TileOffset(0, 0),
+            },
+            MultiTurnPlan {
+                first_action: Action::DropBomb,
+                final_surroundings: vec![],
+                final_position: TileOffset(0, 0),
+            },
+        ];
+
+        use Action::*;
+        plans.sort_by(
+            |&MultiTurnPlan { first_action: a, .. }, &MultiTurnPlan { first_action: b, .. }| match (
+                a, b,
+            ) {
+                (DropBomb | DropBombAndMove(_), Move(_) | StayStill) => Ordering::Less,
+                (DropBomb | DropBombAndMove(_), DropBomb | DropBombAndMove(_)) => Ordering::Equal,
+                (StayStill | Move(_), StayStill | Move(_)) => Ordering::Equal,
+                (Move(_) | StayStill, DropBomb | DropBombAndMove(_)) => Ordering::Greater,
+            },
+        );
+
+        assert_eq!(plans[0].first_action, Action::DropBomb)
+    }
+
+    #[test]
+    fn sample_turn() {
+        // "XX.XX"    X = wall,  P = player
+        // ".BP.X"    . = empty, B = bomb
+        // "XXXXX"
+        // surroundings: Vec<(Tile, Option<Object>, Option<Enemy>, TileOffset)>,
+        #[rustfmt::skip]
+        let surroundings: Vec<(Tile, Option<Object>, Option<Enemy>, TileOffset)> =
+            vec![
+                (Tile::Wall, None, None, TileOffset(-2, 1)),
+                (Tile::Wall, None, None, TileOffset(-1, 1)),
+                (Tile::Floor, None, None, TileOffset(0, 1)),
+                (Tile::Wall, None, None, TileOffset(1, 1)),
+                (Tile::Wall, None, None, TileOffset(2, 1)),
+
+                (Tile::Floor, None, None, TileOffset(-2, 0)),
+                (Tile::Floor, Some(Object::Bomb { fuse_remaining: Ticks(0), range: 3}), None, TileOffset(-1, 0)),
+                (Tile::Floor, None, None, TileOffset(0, 0)),
+                (Tile::Floor, None, None, TileOffset(1, 0)),
+                (Tile::Wall, None, None, TileOffset(2, 0)),
+                
+                
+                (Tile::Wall, None, None, TileOffset(-2, -1)),
+                (Tile::Wall, None, None, TileOffset(-1, -1)),
+                (Tile::Wall, None, None, TileOffset(0, -1)),
+                (Tile::Wall, None, None, TileOffset(1, -1)),
+                (Tile::Wall, None, None, TileOffset(2, -1)),
+            ];
+
+        let turn_if_still = simulate_turn(&surroundings, Action::StayStill);
+
+        println!("{turn_if_still:?}");
+        for plan in all_possible_plans(&surroundings) {
+            println!("{plan:?}");
+        }
+
+        let mut player = Bomber;
+        let decision = player.act(surroundings);
+        assert_eq!(decision, Action::Move(Direction::North));
     }
 }
