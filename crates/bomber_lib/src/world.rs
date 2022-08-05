@@ -3,7 +3,9 @@ use std::convert::TryFrom;
 use serde::{Deserialize, Serialize};
 use strum_macros::EnumIter;
 
-#[derive(EnumIter, Copy, Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(
+    EnumIter, Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord, Hash, Serialize, Deserialize,
+)]
 pub enum Direction {
     West,
     North,
@@ -11,7 +13,9 @@ pub enum Direction {
     South,
 }
 
-#[derive(EnumIter, Copy, Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(
+    EnumIter, Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord, Hash, Serialize, Deserialize,
+)]
 pub enum Tile {
     /// Impassable terrain that cannot be blown up with bombs.
     Wall,
@@ -22,7 +26,7 @@ pub enum Tile {
 }
 
 /// Anything that can be found on top of a tile, other than a player.
-#[derive(Copy, Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub enum Object {
     /// A ticking bomb placed by a player.
     Bomb {
@@ -39,14 +43,14 @@ pub enum Object {
 }
 
 /// A rival player.
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Eq, PartialEq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct Enemy {
     pub name: String,
     pub team_name: String,
     pub score: u32,
 }
 
-#[derive(Copy, Clone, Debug, Eq, PartialEq, Serialize, Deserialize, Hash)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub enum PowerUp {
     /// Each increases the range of your bomb explosions by one.
     BombRange,
@@ -76,11 +80,11 @@ impl PowerUp {
 }
 
 /// Ticks measure game time. Players make one decision per tick.
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct Ticks(pub u32);
 
 /// Position relative to something (typically you),
-#[derive(Copy, Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct TileOffset(pub i32, pub i32);
 
 impl Direction {

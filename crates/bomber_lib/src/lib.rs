@@ -28,7 +28,7 @@ pub trait Player: Default {
     fn team_name() -> String;
 }
 
-#[derive(Copy, Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub enum Action {
     Move(Direction),
     StayStill,
