@@ -1,12 +1,18 @@
+use crate::{
+    log_recoverable_error,
+    player_behaviour::{filter_name, Player, PlayerName, PlayerNameMarker, MAX_NAME_LENGTH},
+    state::Round,
+    ExternalCrateComponent,
+};
+use anyhow::{anyhow, Result};
 use bevy::{
-    asset::{AssetLoader, LoadContext, LoadedAsset},
+    asset::{AssetLoader, AssetServerSettings, LoadContext, LoadedAsset},
     prelude::*,
     reflect::TypeUuid,
     utils::BoxedFuture,
 };
-use bomber_lib::world::Ticks;
-
-use crate::state::Round;
+use bomber_lib::{wasm_name, world::Ticks};
+use wasmtime::{Instance, Store};
 
 pub struct PlayerHotswapPlugin;
 pub const MAX_PLAYERS: usize = 8;
@@ -54,8 +60,11 @@ pub struct WasmPlayerAsset {
 impl Plugin for PlayerHotswapPlugin {
     fn build(&self, app: &mut App) {
         app.insert_resource(PlayerHandles(vec![]))
+            .insert_resource(AssetServerSettings { watch_for_changes: true, ..default() })
             .add_asset::<WasmPlayerAsset>()
             .init_asset_loader::<WasmPlayerLoader>()
+            .add_system(live_brain_reload_system.chain(log_recoverable_error))
+            .add_startup_system(setup)
             .add_system(hotswap_system);
     }
 }
@@ -81,6 +90,10 @@ impl AssetLoader for WasmPlayerLoader {
     }
 }
 
+fn setup(asset_server: Res<AssetServer>) {
+    asset_server.watch_for_changes().unwrap()
+}
+
 /// Maintains the `PlayerHandles` resource in sync with the files in the hotswap folder.
 fn hotswap_system(
     asset_server: Res<AssetServer>,
@@ -94,4 +107,57 @@ fn hotswap_system(
     new_handles.retain(|h| handles.0.iter().all(|old| old.inner().id != h.id));
     handles.0.extend(new_handles.into_iter().map(|new| PlayerHandle::ReadyToSpawn(new.typed())));
     handles.0.truncate(MAX_PLAYERS);
+}
+
+/// Keeps characters up to date with their most recent WASM AI
+fn live_brain_reload_system(
+    assets: Res<Assets<WasmPlayerAsset>>,
+    wasm_engine: Res<wasmtime::Engine>,
+    mut players: Query<
+        (
+            Entity,
+            &mut ExternalCrateComponent<Instance>,
+            &mut ExternalCrateComponent<Store<()>>,
+            &mut PlayerName,
+            &Handle<WasmPlayerAsset>,
+        ),
+        With<Player>,
+    >,
+    mut player_name_text: Query<(&mut Text, &Parent), With<PlayerNameMarker>>,
+    mut events: EventReader<AssetEvent<WasmPlayerAsset>>,
+) -> Result<()> {
+    let changed_handles = events.iter().filter_map(|e| match e {
+        AssetEvent::Modified { handle } => Some(handle),
+        _ => None,
+    });
+
+    for handle in changed_handles {
+        info!("Handle Changed!");
+        for (entity, mut instance, mut store, mut player_name, player_handle) in players.iter_mut()
+        {
+            if handle.id == player_handle.id {
+                let wasm_bytes = assets
+                    .get(handle)
+                    .ok_or_else(|| anyhow!("Wasm asset not found at runtime"))?
+                    .bytes
+                    .clone();
+                let module = wasmtime::Module::new(&wasm_engine, wasm_bytes)?;
+                let mut store = &mut **store;
+                **instance = wasmtime::Instance::new(&mut store, &module, &[])?;
+
+                if let Ok(name) = wasm_name(store, &instance) {
+                    let name = filter_name(&name, MAX_NAME_LENGTH);
+                    player_name.0 = name.clone();
+                    for mut text in player_name_text
+                        .iter_mut()
+                        .filter_map(|(text, p)| (p.0 == entity).then(|| text))
+                    {
+                        text.sections[0].value = name.clone();
+                    }
+                }
+            }
+        }
+    }
+
+    Ok(())
 }
