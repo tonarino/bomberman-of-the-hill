@@ -64,6 +64,7 @@ impl Plugin for PlayerHotswapPlugin {
             .add_asset::<WasmPlayerAsset>()
             .init_asset_loader::<WasmPlayerLoader>()
             .add_system(live_brain_reload_system.chain(log_recoverable_error))
+            .add_system(unban_system)
             .add_startup_system(setup)
             .add_system(hotswap_system);
     }
@@ -109,7 +110,10 @@ fn hotswap_system(
     handles.0.truncate(MAX_PLAYERS);
 }
 
-/// Keeps characters up to date with their most recent WASM AI
+/// Keeps characters up to date with their most recent WASM AI.
+///
+/// Note that this supports changing name live, but not teams, out of fairness. Teams can be changed
+/// on death/respawn though.
 fn live_brain_reload_system(
     assets: Res<Assets<WasmPlayerAsset>>,
     wasm_engine: Res<wasmtime::Engine>,
@@ -132,7 +136,6 @@ fn live_brain_reload_system(
     });
 
     for handle in changed_handles {
-        info!("Handle Changed!");
         for (entity, mut instance, mut store, mut player_name, player_handle) in players.iter_mut()
         {
             if handle.id == player_handle.id {
@@ -160,4 +163,23 @@ fn live_brain_reload_system(
     }
 
     Ok(())
+}
+
+/// Returns "banned" (misbehaving) players to the arena when a new AI is uploaded for them,
+/// assuming that the upload fixes the issue.
+fn unban_system(
+    mut handles: ResMut<PlayerHandles>,
+    mut events: EventReader<AssetEvent<WasmPlayerAsset>>,
+) {
+    let changed_handles = events.iter().filter_map(|e| match e {
+        AssetEvent::Modified { handle } => Some(handle),
+        _ => None,
+    });
+    for changed_handle in changed_handles {
+        if let Some(handle) = handles.0.iter_mut().find(|h| h.inner() == changed_handle) {
+            if matches!(handle, PlayerHandle::Misbehaved(..)) {
+                *handle = PlayerHandle::ReadyToSpawn(changed_handle.clone())
+            }
+        }
+    }
 }
