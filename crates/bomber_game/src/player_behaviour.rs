@@ -33,7 +33,7 @@ use crate::{
     ExternalCrateComponent,
 };
 
-const MAX_NAME_LENGTH: usize = 10;
+pub const MAX_NAME_LENGTH: usize = 10;
 const MAX_TEAM_NAME_LENGTH: usize = 20;
 
 pub struct PlayerBehaviourPlugin;
@@ -54,6 +54,11 @@ pub struct Team {
     pub name: String,
     pub color: Color,
 }
+
+#[derive(Component, Clone, Copy, Debug)]
+pub struct TeamNameMarker;
+#[derive(Component, Clone, Copy, Debug)]
+pub struct PlayerNameMarker;
 
 pub struct KillPlayerEvent(pub Entity, pub PlayerName, pub Score);
 pub struct SpawnPlayerEvent(pub PlayerName);
@@ -284,7 +289,7 @@ fn spawn_player(
     Ok(())
 }
 
-fn filter_name(name: &str, length: usize) -> String {
+pub fn filter_name(name: &str, length: usize) -> String {
     // Only take the first line of text, and limit it to 16 chars.
     name.lines()
         .next()
@@ -298,32 +303,44 @@ fn spawn_player_text(
     name: String,
     team: &Team,
 ) {
-    parent.spawn().insert_bundle(Text2dBundle {
-        text: Text::with_section(
-            name,
-            TextStyle {
-                font: asset_server.load("fonts/space_mono_400.ttf"),
-                font_size: 24.0,
-                color: Color::WHITE,
-            },
-            TextAlignment { vertical: VerticalAlign::Center, horizontal: HorizontalAlign::Center },
-        ),
-        transform: Transform::from_translation(Vec3::new(0.0, 48.0, 0.0)),
-        ..Default::default()
-    });
-    parent.spawn().insert_bundle(Text2dBundle {
-        text: Text::with_section(
-            &team.name,
-            TextStyle {
-                font: asset_server.load("fonts/space_mono_400.ttf"),
-                font_size: 16.0,
-                color: team.color,
-            },
-            TextAlignment { vertical: VerticalAlign::Center, horizontal: HorizontalAlign::Center },
-        ),
-        transform: Transform::from_translation(Vec3::new(0.0, 32.0, 0.0)),
-        ..Default::default()
-    });
+    parent
+        .spawn()
+        .insert_bundle(Text2dBundle {
+            text: Text::with_section(
+                name,
+                TextStyle {
+                    font: asset_server.load("fonts/space_mono_400.ttf"),
+                    font_size: 24.0,
+                    color: Color::WHITE,
+                },
+                TextAlignment {
+                    vertical: VerticalAlign::Center,
+                    horizontal: HorizontalAlign::Center,
+                },
+            ),
+            transform: Transform::from_translation(Vec3::new(0.0, 48.0, 0.0)),
+            ..Default::default()
+        })
+        .insert(PlayerNameMarker);
+    parent
+        .spawn()
+        .insert_bundle(Text2dBundle {
+            text: Text::with_section(
+                &team.name,
+                TextStyle {
+                    font: asset_server.load("fonts/space_mono_400.ttf"),
+                    font_size: 16.0,
+                    color: team.color,
+                },
+                TextAlignment {
+                    vertical: VerticalAlign::Center,
+                    horizontal: HorizontalAlign::Center,
+                },
+            ),
+            transform: Transform::from_translation(Vec3::new(0.0, 32.0, 0.0)),
+            ..Default::default()
+        })
+        .insert(TeamNameMarker);
 }
 
 /// Each frame, matches the player world coordinates to their abstract position
