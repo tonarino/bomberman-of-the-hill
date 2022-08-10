@@ -16,7 +16,10 @@ use state::AppStatePlugin;
 use tick::TickPlugin;
 use victory_screen::VictoryScreenPlugin;
 
+use crate::audio::GameAudioPlugin;
+
 mod animation;
+mod audio;
 mod game_map;
 mod game_ui;
 mod object;
@@ -51,6 +54,7 @@ fn main() -> Result<()> {
         .add_plugins(DefaultPlugins)
         .add_plugin(AppStatePlugin)
         .add_plugin(GameMapPlugin)
+        .add_plugin(GameAudioPlugin)
         .add_plugin(TickPlugin)
         .add_plugin(ScorePlugin)
         .add_plugin(PlayerBehaviourPlugin)

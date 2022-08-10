@@ -18,6 +18,7 @@ use wasmtime::Store;
 
 use crate::{
     animation::AnimationState,
+    audio::SoundEffects,
     game_map::{GameMap, PlayerSpawner, TileLocation},
     game_ui::tonari_color,
     log_recoverable_error, log_unrecoverable_error_and_panic,
@@ -139,6 +140,8 @@ fn player_spawn_system(
     mut spawn_event: EventWriter<SpawnPlayerEvent>,
     assets: Res<Assets<WasmPlayerAsset>>,
     mut texture_atlases: ResMut<Assets<TextureAtlas>>,
+    audio: Res<Audio>,
+    sound_effects: Res<SoundEffects>,
 ) {
     let game_map = game_map_query.single();
     // Despawn all excess players (if the wasm file was unloaded)
@@ -177,6 +180,7 @@ fn player_spawn_system(
         .zip(available_spawn_locations.iter().rev())
         .next()
     {
+        audio.play(sound_effects.spawn.clone());
         spawn_player(
             handle,
             *location,
@@ -536,12 +540,16 @@ fn player_death_system(
     mut player_query: Query<(Entity, &Transform, &Handle<WasmPlayerAsset>), With<Player>>,
     asset_server: Res<AssetServer>,
     mut handles: ResMut<PlayerHandles>,
+    audio: Res<Audio>,
+    sound_effects: Res<SoundEffects>,
 ) {
     for KillPlayerEvent(entity, name, score) in kill_events.iter() {
         for (entity, transform, handle) in player_query.iter_mut().filter(|(e, ..)| e == entity) {
             // The handle will be picked up and the player will be automatically respawned with
             // fresh `wasm` state.
             info!("{} has died!", name.0);
+
+            audio.play(sound_effects.death.clone());
             despawn_event.send(PlayerDespawnedEvent(
                 name.clone(),
                 *score,
