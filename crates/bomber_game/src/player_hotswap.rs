@@ -15,7 +15,7 @@ use bomber_lib::{wasm_name, world::Ticks};
 use wasmtime::{Instance, Store};
 
 pub struct PlayerHotswapPlugin;
-pub const MAX_PLAYERS: usize = 8;
+pub const MAX_PLAYERS: usize = 12;
 
 /// Handle into a .wasm file, classified by whether or not it misbehaved.
 #[derive(Clone, Debug)]
