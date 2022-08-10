@@ -76,7 +76,10 @@ fn spawn_podium(
     fonts: &Fonts,
 ) {
     // TODO(ryo): Handle a tie.
-    let no1_player = player_query.iter().max_by_key(|(_, Score(point), _)| point);
+    let no1_player = player_query
+        .iter()
+        .filter(|(_, Score(point), _)| *point > 0)
+        .max_by_key(|(_, Score(point), _)| point);
     if let Some((PlayerName(name), Score(score), team)) = no1_player {
         parent.spawn().insert_bundle(Text2dBundle {
             text: mono_text(&format!("#1 {} from team {}", name, team.name), 60.0, fonts),
@@ -103,6 +106,17 @@ fn spawn_podium(
 
         parent.spawn().insert_bundle(Text2dBundle {
             text: mono_text(&format!("{} points", score), 30.0, fonts),
+            transform: Transform::from_translation(Vec3::new(0.0, -80.0, VICTORY_SCREEN_ITEMS_Z)),
+            ..Default::default()
+        });
+    } else {
+        parent.spawn().insert_bundle(Text2dBundle {
+            text: mono_text("Nobody got any points :(", 60.0, fonts),
+            transform: Transform::from_translation(Vec3::new(0.0, 80.0, VICTORY_SCREEN_ITEMS_Z)),
+            ..Default::default()
+        });
+        parent.spawn().insert_bundle(Text2dBundle {
+            text: mono_text("Good luck and get to the hill!", 30.0, fonts),
             transform: Transform::from_translation(Vec3::new(0.0, -80.0, VICTORY_SCREEN_ITEMS_Z)),
             ..Default::default()
         });
