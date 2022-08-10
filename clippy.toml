@@ -2,4 +2,4 @@
 type-complexity-threshold = 1000
 
 # Bevy systems often have more than 7 arguments.
-too-many-arguments-threshold = 12
+too-many-arguments-threshold = 14

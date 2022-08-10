@@ -2,6 +2,7 @@ use anyhow::Result;
 use bevy::prelude::*;
 
 use crate::{
+    audio::SoundEffects,
     log_unrecoverable_error_and_panic,
     player_behaviour::{PlayerName, Team},
     rendering::{PLAYER_HEIGHT_PX, PLAYER_WIDTH_PX, VICTORY_SCREEN_ITEMS_Z, VICTORY_SCREEN_Z},
@@ -45,9 +46,12 @@ fn setup(
     fonts: Res<Fonts>,
     windows: Res<Windows>,
     round: Res<Round>,
+    audio: Res<Audio>,
+    sound_effects: Res<SoundEffects>,
     mut commands: Commands,
 ) {
     let window = windows.get_primary().unwrap();
+    audio.play(sound_effects.win.clone());
 
     // Fill the background in a transparent black.
     commands
@@ -76,7 +80,10 @@ fn spawn_podium(
     fonts: &Fonts,
 ) {
     // TODO(ryo): Handle a tie.
-    let no1_player = player_query.iter().max_by_key(|(_, Score(point), _)| point);
+    let no1_player = player_query
+        .iter()
+        .filter(|(_, Score(point), _)| *point > 0)
+        .max_by_key(|(_, Score(point), _)| point);
     if let Some((PlayerName(name), Score(score), team)) = no1_player {
         parent.spawn().insert_bundle(Text2dBundle {
             text: mono_text(&format!("#1 {} from team {}", name, team.name), 60.0, fonts),
@@ -103,6 +110,17 @@ fn spawn_podium(
 
         parent.spawn().insert_bundle(Text2dBundle {
             text: mono_text(&format!("{} points", score), 30.0, fonts),
+            transform: Transform::from_translation(Vec3::new(0.0, -80.0, VICTORY_SCREEN_ITEMS_Z)),
+            ..Default::default()
+        });
+    } else {
+        parent.spawn().insert_bundle(Text2dBundle {
+            text: mono_text("Nobody got any points :(", 60.0, fonts),
+            transform: Transform::from_translation(Vec3::new(0.0, 80.0, VICTORY_SCREEN_ITEMS_Z)),
+            ..Default::default()
+        });
+        parent.spawn().insert_bundle(Text2dBundle {
+            text: mono_text("Good luck and get to the hill!", 30.0, fonts),
             transform: Transform::from_translation(Vec3::new(0.0, -80.0, VICTORY_SCREEN_ITEMS_Z)),
             ..Default::default()
         });
