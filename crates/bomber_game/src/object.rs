@@ -5,6 +5,7 @@ use bomber_lib::world::{Direction, Object, PowerUp, Ticks, Tile};
 use rand::{thread_rng, Rng};
 
 use crate::{
+    audio::SoundEffects,
     game_map::{GameMap, TileLocation},
     player_behaviour::{KillPlayerEvent, Owner, Player, PlayerName},
     rendering::{FLAME_Z, GAME_OBJECT_Z, TILE_WIDTH_PX},
@@ -51,11 +52,6 @@ pub struct Textures {
     pub vision_range_power_up: Handle<Image>,
 }
 
-struct SoundEffects {
-    explosion: Handle<AudioSource>,
-    drop: Handle<AudioSource>,
-}
-
 impl Plugin for ObjectPlugin {
     fn build(&self, app: &mut App) {
         let asset_server =
@@ -68,14 +64,9 @@ impl Plugin for ObjectPlugin {
                 .load("graphics/Sprites/Powerups/BombPowerup.png"),
             vision_range_power_up: asset_server.load("graphics/Sprites/Powerups/EyePowerup.png"),
         };
-        let sound_effects = SoundEffects {
-            explosion: asset_server.load("audio/sound_effects/bomb-explosion.mp3"),
-            drop: asset_server.load("audio/sound_effects/bomb-drop.mp3"),
-        };
         app.insert_resource(textures)
             .add_event::<KillPlayerEvent>()
             .add_event::<BombExplodeEvent>()
-            .insert_resource(sound_effects)
             .add_event::<SpawnBombEvent>()
             .add_system_set(
                 SystemSet::on_update(AppState::InGame)
@@ -382,6 +373,8 @@ fn pick_up_power_up_system(
         (With<PowerUpMarker>, Without<Player>),
     >,
     mut commands: Commands,
+    audio: Res<Audio>,
+    sound_effects: Res<SoundEffects>,
 ) {
     for _ in ticks.iter().filter(|t| matches!(t, Tick::World)) {
         for (mut player, player_location) in player_query.iter_mut() {
@@ -398,7 +391,7 @@ fn pick_up_power_up_system(
                 let power_up_count = player.power_ups.entry(power_up).or_insert(0);
                 *power_up_count = (*power_up_count + 1).min(power_up.max_count_per_player());
 
-                // TODO add some visuals showing the powerup being acquired.
+                audio.play(sound_effects.powerup.clone());
                 commands.entity(entity).despawn_recursive();
             }
         }

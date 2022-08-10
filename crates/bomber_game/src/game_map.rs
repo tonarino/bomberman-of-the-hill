@@ -25,6 +25,8 @@ pub const CRATE_HEAVY_CROSS_ARENA_SMALL: &str =
     include_str!("../assets/maps/crate_heavy_cross_arena_small.txt");
 /// comfortable for 8 players, find your way into the castle.
 pub const CASTLE: &str = include_str!("../assets/maps/castle.txt");
+pub const RACE: &str = include_str!("../assets/maps/race.txt");
+pub const SHINGEKI: &str = include_str!("../assets/maps/shingeki_no_kyojin.txt");
 
 /// Activating this plugin automatically spawns a game map on startup.
 pub struct GameMapPlugin;
@@ -81,6 +83,14 @@ fn setup(
         },
         MapIndex(1) => {
             GameMap::spawn_from_text(&mut commands, CASTLE, &textures)?;
+            next_map.0 = 2;
+        },
+        MapIndex(2) => {
+            GameMap::spawn_from_text(&mut commands, RACE, &textures)?;
+            next_map.0 = 3;
+        },
+        MapIndex(3) => {
+            GameMap::spawn_from_text(&mut commands, SHINGEKI, &textures)?;
             next_map.0 = 0;
         },
         _ => return Err(anyhow!("Invalid map index")),
