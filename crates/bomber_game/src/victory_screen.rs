@@ -2,6 +2,7 @@ use anyhow::Result;
 use bevy::prelude::*;
 
 use crate::{
+    audio::SoundEffects,
     log_unrecoverable_error_and_panic,
     player_behaviour::{PlayerName, Team},
     rendering::{PLAYER_HEIGHT_PX, PLAYER_WIDTH_PX, VICTORY_SCREEN_ITEMS_Z, VICTORY_SCREEN_Z},
@@ -45,9 +46,12 @@ fn setup(
     fonts: Res<Fonts>,
     windows: Res<Windows>,
     round: Res<Round>,
+    audio: Res<Audio>,
+    sound_effects: Res<SoundEffects>,
     mut commands: Commands,
 ) {
     let window = windows.get_primary().unwrap();
+    audio.play(sound_effects.win.clone());
 
     // Fill the background in a transparent black.
     commands
