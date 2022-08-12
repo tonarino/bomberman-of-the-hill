@@ -106,7 +106,9 @@ fn get_upload_round_and_path_for(filename: &str) -> Result<(usize, PathBuf), Err
         }
 
         // The round folder may not exist, ensure it does.
-        create_dir_all(&round_path)?;
+        if !round_path.exists() {
+            create_dir_all(&round_path)?;
+        }
 
         // Skip full rounds.
         if count_players_in_dir(&round_path)? >= MAX_PLAYERS_PER_ROUND {
