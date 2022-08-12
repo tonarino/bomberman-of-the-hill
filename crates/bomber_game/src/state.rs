@@ -71,8 +71,7 @@ fn app_state_system(
     let RoundTimer(ref mut timer) = *timer;
     if timer.tick(time.delta()).just_finished() {
         let (next_state, next_duration) = match app_state.current() {
-            AppState::InGame => (AppState::VictoryScreen, VICTORY_SCREEN_DURATION),
-            AppState::VictoryScreen => {
+            AppState::InGame => {
                 let finished_round_path = Path::new(ROUNDS_FOLDER)
                     .join(round.0.to_string())
                     .join(FINISHED_ROUND_MARKER_FILENAME);
@@ -84,8 +83,9 @@ fn app_state_system(
                 if !round_folder.exists() {
                     create_dir_all(round_folder).expect("Failed to create round folder");
                 }
-                (AppState::InGame, GAME_DURATION)
+                (AppState::VictoryScreen, VICTORY_SCREEN_DURATION)
             },
+            AppState::VictoryScreen => (AppState::InGame, GAME_DURATION),
         };
         app_state.set(next_state)?;
         commands.entity(timer_entity).despawn();

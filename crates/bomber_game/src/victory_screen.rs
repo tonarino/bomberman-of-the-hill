@@ -129,7 +129,7 @@ fn spawn_podium(
 
 fn spawn_countdown_text(parent: &mut ChildBuilder, fonts: &Fonts, round: &Round) {
     parent.spawn().insert_bundle(Text2dBundle {
-        text: mono_text(&format!("Next round ({}) in...", round.0 + 1), 30.0, fonts),
+        text: mono_text(&format!("Next round ({}) in...", round.0), 30.0, fonts),
         transform: Transform::from_translation(Vec3::new(0.0, -200.0, VICTORY_SCREEN_ITEMS_Z)),
         ..Default::default()
     });
