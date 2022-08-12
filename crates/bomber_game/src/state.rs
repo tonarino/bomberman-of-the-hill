@@ -42,8 +42,11 @@ impl Plugin for AppStatePlugin {
                     .exists()
             })
             .expect("All possible round slots are full");
-        create_dir_all(Path::new(ROUNDS_FOLDER).join(first_round.to_string()))
-            .expect("Failed to create round folder");
+
+        let round_folder = Path::new(ROUNDS_FOLDER).join(first_round.to_string());
+        if !round_folder.exists() {
+            create_dir_all(round_folder).expect("Failed to create round folder");
+        }
 
         app.add_startup_system(setup)
             .insert_resource(Round(first_round))
@@ -68,8 +71,7 @@ fn app_state_system(
     let RoundTimer(ref mut timer) = *timer;
     if timer.tick(time.delta()).just_finished() {
         let (next_state, next_duration) = match app_state.current() {
-            AppState::InGame => (AppState::VictoryScreen, VICTORY_SCREEN_DURATION),
-            AppState::VictoryScreen => {
+            AppState::InGame => {
                 let finished_round_path = Path::new(ROUNDS_FOLDER)
                     .join(round.0.to_string())
                     .join(FINISHED_ROUND_MARKER_FILENAME);
@@ -77,10 +79,13 @@ fn app_state_system(
                 fs::write(&finished_round_path, &[])
                     .with_context(|| format!("writing {:?}", finished_round_path))?;
                 round.0 += 1;
-                create_dir_all(Path::new(ROUNDS_FOLDER).join(round.0.to_string()))
-                    .expect("Failed to create round folder");
-                (AppState::InGame, GAME_DURATION)
+                let round_folder = Path::new(ROUNDS_FOLDER).join(round.0.to_string());
+                if !round_folder.exists() {
+                    create_dir_all(round_folder).expect("Failed to create round folder");
+                }
+                (AppState::VictoryScreen, VICTORY_SCREEN_DURATION)
             },
+            AppState::VictoryScreen => (AppState::InGame, GAME_DURATION),
         };
         app_state.set(next_state)?;
         commands.entity(timer_entity).despawn();

@@ -753,7 +753,7 @@ fn wasm_player_action(
         .iter()
         .filter_map(|(location, tile)| {
             let object_on_tile =
-                object_query.iter().find_map(|(l, o)| (l == location).then_some(&*o));
+                object_query.iter().find_map(|(l, o)| (l == location).then_some(o));
             let enemy_on_tile = enemies.iter().find_map(|(e, l)| (l == location).then_some(e));
             ((*location - *player_location).taxicab_distance() <= view_distance).then(|| {
                 (
