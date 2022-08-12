@@ -234,6 +234,14 @@ fn spawn_flames(
     // Spawn a flame at the bomb location.
     spawn_flame(parent, bomb_location, game_map, textures);
 
+    if let Some((entity, name, score)) =
+        player_query
+            .iter()
+            .find_map(|(_, l, e, n, s)| if *l == *bomb_location { Some((e, n, s)) } else { None })
+    {
+        kill_events.send(KillPlayerEvent(entity, name.clone(), *score));
+    }
+
     // Spawn flames in each direction.
     for direction in &Direction::all() {
         for reach in 1..=(range as i32) {
