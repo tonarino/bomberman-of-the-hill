@@ -16,7 +16,7 @@ struct MapIndex(usize);
 
 impl FromWorld for MapIndex {
     fn from_world(_: &mut World) -> Self {
-        Self(0)
+        Self(9)
     }
 }
 
@@ -28,6 +28,7 @@ pub const CASTLE: &str = include_str!("../assets/maps/castle.txt");
 pub const RACE: &str = include_str!("../assets/maps/race.txt");
 pub const SHINGEKI: &str = include_str!("../assets/maps/shingeki_no_kyojin.txt");
 pub const SPIRAL: &str = include_str!("../assets/maps/spiral.txt");
+pub const FINLAND: &str = include_str!("../assets/maps/finland.txt");
 
 /// Activating this plugin automatically spawns a game map on startup.
 pub struct GameMapPlugin;
@@ -108,6 +109,14 @@ fn setup(
         },
         MapIndex(7) => {
             GameMap::spawn_from_text(&mut commands, SPIRAL, &textures)?;
+            next_map.0 = 8;
+        },
+        MapIndex(8) => {
+            GameMap::spawn_from_text(&mut commands, CRATE_HEAVY_CROSS_ARENA_SMALL, &textures)?;
+            next_map.0 = 9;
+        },
+        MapIndex(9) => {
+            GameMap::spawn_from_text(&mut commands, FINLAND, &textures)?;
             next_map.0 = 0;
         },
         _ => return Err(anyhow!("Invalid map index")),
