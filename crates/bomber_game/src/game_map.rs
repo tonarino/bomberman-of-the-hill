@@ -87,14 +87,26 @@ fn setup(
             next_map.0 = 2;
         },
         MapIndex(2) => {
-            GameMap::spawn_from_text(&mut commands, RACE, &textures)?;
+            GameMap::spawn_from_text(&mut commands, CRATE_HEAVY_CROSS_ARENA_SMALL, &textures)?;
             next_map.0 = 3;
         },
         MapIndex(3) => {
-            GameMap::spawn_from_text(&mut commands, SHINGEKI, &textures)?;
+            GameMap::spawn_from_text(&mut commands, RACE, &textures)?;
             next_map.0 = 4;
         },
         MapIndex(4) => {
+            GameMap::spawn_from_text(&mut commands, CRATE_HEAVY_CROSS_ARENA_SMALL, &textures)?;
+            next_map.0 = 5;
+        },
+        MapIndex(5) => {
+            GameMap::spawn_from_text(&mut commands, SHINGEKI, &textures)?;
+            next_map.0 = 6;
+        },
+        MapIndex(6) => {
+            GameMap::spawn_from_text(&mut commands, CRATE_HEAVY_CROSS_ARENA_SMALL, &textures)?;
+            next_map.0 = 7;
+        },
+        MapIndex(7) => {
             GameMap::spawn_from_text(&mut commands, SPIRAL, &textures)?;
             next_map.0 = 0;
         },
