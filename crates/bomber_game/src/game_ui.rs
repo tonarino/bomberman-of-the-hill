@@ -151,7 +151,7 @@ fn dead_player_score_system(
 ) {
     for SpawnPlayerEvent(name) in spawn_events.iter() {
         if let Some(entity) =
-            dead_player_scores.iter().find_map(|(e, _, n)| (n.0 == name.0).then(|| e))
+            dead_player_scores.iter().find_map(|(e, _, n)| (n.0 == name.0).then_some(e))
         {
             commands.entity(entity).despawn_recursive();
         }

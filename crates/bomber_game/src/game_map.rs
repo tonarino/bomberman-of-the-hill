@@ -317,14 +317,13 @@ fn object_from_char(character: char) -> Option<Object> {
     match character {
         'c' | 'C' => Some(Object::Crate),
         // Numbers in the map text represent a chance for a crate to spawn.
-        p @ '1'..='9' => {
-            (p.to_digit(10).unwrap() >= rand::thread_rng().gen_range(1..=10)).then(|| Object::Crate)
-        },
+        p @ '1'..='9' => (p.to_digit(10).unwrap() >= rand::thread_rng().gen_range(1..=10))
+            .then_some(Object::Crate),
         _ => None,
     }
 }
 
 // Implemented as a standalone function for the same reason as `tile_from_char`
 fn spawner_from_char(character: char) -> Option<PlayerSpawner> {
-    (character == 's').then(|| PlayerSpawner)
+    (character == 's').then_some(PlayerSpawner)
 }

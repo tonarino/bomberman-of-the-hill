@@ -21,7 +21,7 @@ fn hill_score_system(
     for _ in ticks.iter().filter(|t| matches!(t, Tick::World)) {
         for (mut score, location) in player_query.iter_mut() {
             if let Some(Tile::Hill) =
-                tile_query.iter().find_map(|(t, l)| (l == location).then(|| **t))
+                tile_query.iter().find_map(|(t, l)| (l == location).then_some(**t))
             {
                 score.0 += 1;
             }

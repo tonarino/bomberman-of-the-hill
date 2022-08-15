@@ -165,9 +165,9 @@ fn cleanup(
 }
 
 fn mono_text(text: &str, font_size: f32, fonts: &Fonts) -> Text {
-    Text::with_section(
-        text,
-        TextStyle { font: fonts.mono.clone(), font_size, color: Color::WHITE },
-        TextAlignment { vertical: VerticalAlign::Center, horizontal: HorizontalAlign::Center },
-    )
+    Text::from_section(text, TextStyle { font: fonts.mono.clone(), font_size, color: Color::WHITE })
+        .with_alignment(TextAlignment {
+            vertical: VerticalAlign::Center,
+            horizontal: HorizontalAlign::Center,
+        })
 }

@@ -310,18 +310,18 @@ fn spawn_player_text(
     parent
         .spawn()
         .insert_bundle(Text2dBundle {
-            text: Text::with_section(
+            text: Text::from_section(
                 name,
                 TextStyle {
                     font: asset_server.load("fonts/space_mono_400.ttf"),
                     font_size: 24.0,
                     color: Color::WHITE,
                 },
-                TextAlignment {
-                    vertical: VerticalAlign::Center,
-                    horizontal: HorizontalAlign::Center,
-                },
-            ),
+            )
+            .with_alignment(TextAlignment {
+                vertical: VerticalAlign::Center,
+                horizontal: HorizontalAlign::Center,
+            }),
             transform: Transform::from_translation(Vec3::new(0.0, 48.0, 0.0)),
             ..Default::default()
         })
@@ -329,18 +329,18 @@ fn spawn_player_text(
     parent
         .spawn()
         .insert_bundle(Text2dBundle {
-            text: Text::with_section(
+            text: Text::from_section(
                 &team.name,
                 TextStyle {
                     font: asset_server.load("fonts/space_mono_400.ttf"),
                     font_size: 16.0,
                     color: team.color,
                 },
-                TextAlignment {
-                    vertical: VerticalAlign::Center,
-                    horizontal: HorizontalAlign::Center,
-                },
-            ),
+            )
+            .with_alignment(TextAlignment {
+                vertical: VerticalAlign::Center,
+                horizontal: HorizontalAlign::Center,
+            }),
             transform: Transform::from_translation(Vec3::new(0.0, 32.0, 0.0)),
             ..Default::default()
         })
@@ -710,7 +710,7 @@ fn move_player(
         .ok_or_else(|| anyhow!("Invalid target location ({})", player_name))?;
     let target_tile = tile_query
         .iter()
-        .find_map(|(l, t)| (*l == target_location).then(|| t))
+        .find_map(|(l, t)| (*l == target_location).then_some(t))
         .ok_or_else(|| anyhow!("No tile at target location ({})", player_name))?;
     let solid_objects_on_tile =
         object_query.iter().filter(|(l, o)| (*l == &target_location && o.is_solid())).count();
@@ -755,7 +755,7 @@ fn wasm_player_action(
             let object_on_tile =
                 object_query.iter().find_map(|(l, o)| (l == location).then_some(o));
             let enemy_on_tile = enemies.iter().find_map(|(e, l)| (l == location).then_some(e));
-            ((*location - *player_location).taxicab_distance() <= view_distance).then(|| {
+            ((*location - *player_location).taxicab_distance() <= view_distance).then_some({
                 (
                     **tile,
                     object_on_tile.map(|o| **o),
