@@ -153,7 +153,7 @@ fn live_brain_reload_system(
                     player_name.0 = name.clone();
                     for mut text in player_name_text
                         .iter_mut()
-                        .filter_map(|(text, p)| (p.0 == entity).then(|| text))
+                        .filter_map(|(text, p)| (p.get() == entity).then_some(text))
                     {
                         text.sections[0].value = name.clone();
                     }

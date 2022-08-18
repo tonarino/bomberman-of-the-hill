@@ -36,7 +36,7 @@ impl Player for Wanderer {
         // A wanderer walks to their preferred direction if it's free.
         // If it isn't, they  walk to the first free tile they inspect.
         let preferred_tile = surroundings.iter().find_map(|(t, o, _, p)| {
-            (o.is_none() && (*p == self.preferred_direction.extend(1))).then(|| t)
+            (o.is_none() && (*p == self.preferred_direction.extend(1))).then_some(t)
         });
         if matches!(preferred_tile, Some(Tile::Floor)) {
             Action::Move(Direction::North)

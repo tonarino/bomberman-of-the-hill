@@ -8,9 +8,9 @@ edition = "2021"
 [dependencies]
 wasmtime = "0.38"
 # TODO(bschwind) - Remove the 'dynamic' feature flag before deployment of the final version.
-bevy = { version = "0.7", features = ["dynamic", "mp3", "wav", "filesystem_watcher"] }
-bevy_egui = "0.14"
-bevy_tweening = "0.4"
+bevy = { version = "0.8.0", features = ["dynamic", "mp3", "wav", "filesystem_watcher"] }
+bevy_egui = "0.15"
+bevy_tweening = "0.5"
 anyhow = "1"
 rand = "0.8"
 

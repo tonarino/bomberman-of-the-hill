@@ -70,8 +70,7 @@ fn main() -> Result<()> {
 }
 
 fn setup(mut commands: Commands) {
-    commands.spawn_bundle(OrthographicCameraBundle::new_2d());
-    commands.spawn_bundle(UiCameraBundle::default());
+    commands.spawn_bundle(Camera2dBundle::default()).insert(UiCameraConfig { show_ui: false });
 }
 
 fn log_recoverable_error(In(result): In<Result<()>>) {
